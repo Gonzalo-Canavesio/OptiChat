@@ -12,7 +12,7 @@ trap cleanup SIGINT
 
 # Start ADK API Server in background
 echo "Starting ADK API Server..."
-adk api_server &
+uv run adk api_server &
 ADK_PID=$!
 
 # Wait for API server to be ready (simple sleep for now, could be more robust)
@@ -21,7 +21,7 @@ sleep 5
 
 # Start Streamlit App
 echo "Starting Streamlit App..."
-streamlit run app.py
+uv run streamlit run app.py
 
 # Wait for background processes
 wait $ADK_PID
