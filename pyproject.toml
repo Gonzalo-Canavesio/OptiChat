@@ -43,3 +43,6 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
+
+[tool.setuptools]
+packages = ["optichat"]
