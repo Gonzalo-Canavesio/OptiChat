@@ -1,0 +1,45 @@
+[project]
+name = "optichat"
+version = "0.2.1"
+description = "Conversational assistant for feasible and infeasible optimization model analysis, powered by Pyomo/Gurobi, LLM agents, and retrieval tools."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "google-adk>=1.31.1",
+    "gurobipy>=13.0.1",
+    "langchain>=1.2.15",
+    "langchain-chroma>=1.1.0",
+    "langchain-community>=0.4.1",
+    "langchain-experimental>=0.4.1",
+    "langchain-openai>=1.2.1",
+    "loguru>=0.7.3",
+    "openai>=2.32.0",
+    "pydantic>=2.13.3",
+    "pyomo>=6.10.0",
+    "streamlit>=1.56.0",
+    "tiktoken>=0.12.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.12",
+    "tox>=4.53.0",
+    "tox-uv>=1.35.1",
+]
+
+[tool.ruff]
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    "Feas",
+    "Infeas",
+    "debug_use",
+    "test_set",
+    "test_results",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
