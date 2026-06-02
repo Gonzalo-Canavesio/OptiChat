@@ -258,7 +258,7 @@ if prompt := st.chat_input("Enter your query here..."):
                     content = event['content']
                     if 'parts' in content:
                         for part in content['parts']:
-                            if 'text' in part:
+                            if 'text' in part and not part.get('thought'):
                                 full_response += part['text']
             
             if full_response:
