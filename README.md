@@ -14,12 +14,18 @@ If you found this work useful, please cite this [preprint](https://arxiv.org/abs
 Please note that the requirements.txt file has not yet been updated, and you may encounter compatibility issues, particularly related to infeasible models. These issues may arise due to version mismatches or outdated dependencies. We are working to address this and will update the file as soon as possible. Thank you for your understanding and patience.
 
 ## Table of Contents
+- [OptiChat](#optichat)
+- [Video Demo](#video-demo)
+- [Compatibility Notice](#compatibility-notice)
+  - [Table of Contents](#table-of-contents)
 - [Overview](#overview)
+  - [Motivation](#motivation)
+  - [Scope](#scope)
 - [Installation](#installation)
 - [Tutorial](#tutorial)
-- [Chat Example](#chat-example)
-- [Model Library](#model-library)
-- [Build Your Own Model and Test it](#build-your-own-model-and-test-it)
+  - [Chat Example](#chat-example)
+- [Model Library:](#model-library)
+- [Build Your Own Model and Test it:](#build-your-own-model-and-test-it)
 - [Citation](#citation)
 
 # Overview
