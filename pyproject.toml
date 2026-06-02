@@ -12,6 +12,7 @@ dependencies = [
     "langchain-community>=0.4.1",
     "langchain-experimental>=0.4.1",
     "langchain-openai>=1.2.1",
+    "litellm>=1.85.0",
     "loguru>=0.7.3",
     "openai>=2.32.0",
     "pydantic>=2.13.3",
