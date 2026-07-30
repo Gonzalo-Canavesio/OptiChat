@@ -25,15 +25,18 @@ class LLMProviderConfig(BaseModel):
 
 
 class AgentConfig(BaseModel):
+    provider_label: str = Field(
+        ..., description="The label of the LLM provider to use for the agent."
+    )
     llm_model: str = Field(..., description="The LLM model associated with the agent.")
     temperature: float | None = Field(
-        None,
+        default=None,
         description="Optional temperature setting for the agent's LLM model.",
         ge=0.0,
         le=1.0,
     )
     max_tokens: int | None = Field(
-        None,
+        default=None,
         description="Optional maximum token limit for the agent's LLM model.",
         ge=1,
     )
@@ -101,13 +104,9 @@ def _get_env_var_name_for_provider(provider_name: str | None) -> str | None:
     return None
 
 
-def get_available_llm_models() -> list[str]:
-    providers = _get_configured_llm_providers_from_file()
-    temp_env_vars = {
-        _get_env_var_name_for_provider(provider.type): provider.api_key
-        for provider in providers
-    }
-    with patch.dict(os.environ, temp_env_vars):
+def get_available_llm_models(provider: LLMProviderConfig) -> list[str]:
+    temp_env_var = {_get_env_var_name_for_provider(provider.type): provider.api_key}
+    with patch.dict(os.environ, temp_env_var):
         return litellm.get_valid_models()
 
 
@@ -147,7 +146,6 @@ def add_llm_profile(profile: ProfileConfig):
         yaml.safe_dump({"profiles": serializable_profiles}, file)
 
 
-
 def add_llm_provider(provider: LLMProviderConfig):
     providers = _get_configured_llm_providers_from_file()
     existing_labels = {
@@ -161,4 +159,3 @@ def add_llm_provider(provider: LLMProviderConfig):
     with config_path.open("w", encoding="utf-8") as file:
         serializable_providers = [p.model_dump() for p in providers]
         yaml.safe_dump({"providers": serializable_providers}, file)
-
