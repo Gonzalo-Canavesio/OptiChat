@@ -16,80 +16,88 @@ from llms import (
 )
 
 
+def _feedback_queue():
+    if "feedback" not in st.session_state:
+        st.session_state["feedback"] = []
+    return st.session_state["feedback"]
+
+
+def queue_feedback(*args, **kwargs):
+    _feedback_queue().append((args, kwargs))
+
+
 def _clean_old_session_state_keys(keys: list[str]):
     for key in keys:
         if key in st.session_state:
             del st.session_state[key]
 
 
-def _clean_llm_provider_form_session_state():
-    _clean_old_session_state_keys(
-        [
-            "provider_type_selectbox",
-            "api_key_input",
-            "provider_label_input",
-        ]
-    )
-
-
 def render_llm_provider_form(existing_provider: LLMProviderConfig | None = None):
     if existing_provider:
         st.info(
             "You can change the label for the existing provider, but the provider type "
-            "and API key cannot be changed.  \n"
-            "To change the provider type or API key, please delete this provider and "
-            "add a new one.",
+            "and API key cannot be changed. To change the provider type or API key, "
+            "please delete this provider and add a new one.",
         )
     else:
         st.info(
-            "Please provide the API key for your LLM provider.  \n"
-            "You can also provide a custom label for your provider, but it is optional."
-            " If you don't provide a label, the label will be generated automatically.",
+            "Please provide the API key for your LLM provider. You can also provide a "
+            "custom label for your provider, but it is optional. If you don't provide "
+            "a custom label, the label will be generated automatically.",
         )
-    st.selectbox(
-        "LLM Provider (Required)",
-        options=get_available_types_llm_providers(),
-        index=get_available_types_llm_providers().index(existing_provider.type)
-        if existing_provider
-        else None,
-        key="provider_type_selectbox",
-        help="Choose the LLM provider for your optimization problem.",
-        disabled=existing_provider is not None,
-    )
-    st.text_input(
-        "API Key (Required)",
-        value=f"{existing_provider.api_key[:5]}...{existing_provider.api_key[-5:]}"
-        if existing_provider
-        else "",
-        key="api_key_input",
-        help="Enter your API key for the selected LLM provider.",
-        disabled=existing_provider is not None,
-    )
-    st.text_input(
-        "Custom Label (Optional)",
-        value=existing_provider.label if existing_provider else "",
-        key="provider_label_input",
-        help="You can provide a custom label for your LLM provider if you wish.",
-    )
+    with st.form("llm_provider_form", border=False):
+        provider_type = st.selectbox(
+            "LLM Provider (Required)",
+            options=get_available_types_llm_providers(),
+            index=get_available_types_llm_providers().index(existing_provider.type)
+            if existing_provider
+            else None,
+            help="Choose the LLM provider for your optimization problem.",
+            disabled=existing_provider is not None,
+        )
+        api_key = st.text_input(
+            "API Key (Required)",
+            value=f"{existing_provider.api_key[:5]}...{existing_provider.api_key[-5:]}"
+            if existing_provider
+            else "",
+            help="Enter your API key for the selected LLM provider.",
+            disabled=existing_provider is not None,
+        )
+        label = st.text_input(
+            "Custom Label (Optional)",
+            value=existing_provider.label if existing_provider else "",
+            help="You can provide a custom label for your LLM provider if you wish.",
+        )
 
-    if st.button(
-        "Save LLM Provider",
-        disabled=not (
-            st.session_state.provider_type_selectbox and st.session_state.api_key_input
-        ),
-        width="stretch",
-        help="Click to save your API key for the selected LLM provider.",
-    ):
-        provider = LLMProviderConfig(
-            label=st.session_state.provider_label_input,
-            type=st.session_state.provider_type_selectbox,
-            api_key=st.session_state.api_key_input,
-        )
-        if existing_provider:
-            update_llm_provider(existing_provider, provider)
-        else:
-            add_llm_provider(provider)
-        st.rerun()
+        if st.form_submit_button("Save", width="stretch"):
+            if not provider_type or not api_key:
+                st.error(
+                    "Please provide both the LLM provider type and API key before saving."
+                )
+                return
+            if existing_provider:
+                provider = LLMProviderConfig(
+                    label=label,
+                    type=existing_provider.type,
+                    api_key=existing_provider.api_key,
+                )
+                update_llm_provider(existing_provider, provider)
+                queue_feedback(
+                    f"LLM provider **{provider.label}** (before **{existing_provider.label}**) updated successfully!",
+                    icon=":material/check_circle:",
+                )
+            else:
+                provider = LLMProviderConfig(
+                    label=label,
+                    type=provider_type,
+                    api_key=api_key,
+                )
+                add_llm_provider(provider)
+                queue_feedback(
+                    f"LLM provider **{provider.label}** added successfully!",
+                    icon=":material/check_circle:",
+                )
+            st.rerun()
 
 
 def render_llm_profile_form(existing_profile: ProfileConfig | None = None):
@@ -388,7 +396,7 @@ def render_settings_view():
     ):
         st.session_state.current_view = "chat"
         st.rerun()
-    st.title("⚙️ Settings")
+    st.title("Settings")
     mode = st.segmented_control(
         "Settings Mode",
         ["LLM Providers", "LLM Profiles"],
@@ -410,12 +418,9 @@ def render_settings_view():
             width="stretch",
             icon=":material/add:",
         ):
-            st.dialog(
-                title="Add New LLM Provider",
-                width="medium",
-                dismissible=True,
-                on_dismiss=_clean_llm_provider_form_session_state,
-            )(render_llm_provider_form)()
+            st.dialog(title="Add New LLM Provider", width="medium")(
+                render_llm_provider_form
+            )()
 
         providers = get_configured_llm_providers()
 
@@ -426,7 +431,7 @@ def render_settings_view():
                 )
 
                 with col_label:
-                    st.markdown(f"**{provider.label} ({provider.type})**")
+                    st.markdown(f"**{provider.label}** ({provider.type})")
 
                 with col_edit:
                     if st.button(
@@ -437,10 +442,7 @@ def render_settings_view():
                         icon=":material/edit:",
                     ):
                         st.dialog(
-                            title=f"Edit LLM Provider: {provider.label}",
-                            width="medium",
-                            dismissible=True,
-                            on_dismiss=_clean_llm_provider_form_session_state,
+                            title=f"Edit LLM Provider: {provider.label}", width="medium"
                         )(render_llm_provider_form)(provider)
 
                 with col_delete:
@@ -468,8 +470,16 @@ def configure_page():
         st.session_state.current_view = "chat"
 
 
+def run_toasts():
+    queue = _feedback_queue()
+    for args, kwargs in queue:
+        st.success(*args, **kwargs)
+    queue.clear()
+
+
 def run_interface():
     configure_page()
+    run_toasts()
     if st.session_state.current_view == "settings":
         render_settings_view()
     else:

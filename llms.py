@@ -58,8 +58,8 @@ class ProfileConfig(BaseModel):
     )
 
 
-def _generate_unique_label(base_label: str, existing_labels: set[str]) -> str:
-    final_label = base_label
+def _generate_valid_label(base_label: str, existing_labels: set[str]) -> str:
+    final_label = base_label.strip()
     counter = 2
 
     while final_label in existing_labels:
@@ -100,7 +100,7 @@ def _get_valid_label_for_provider(provider: LLMProviderConfig) -> str:
     providers = _get_configured_llm_providers_from_file()
     existing_labels = {p.label for p in providers if p.label is not None}
     base_label = provider.label if provider.label else provider.type
-    return _generate_unique_label(base_label, existing_labels)
+    return _generate_valid_label(base_label, existing_labels)
 
 
 def get_available_types_llm_providers() -> list[str]:
@@ -209,7 +209,7 @@ def get_llm_profiles() -> list[ProfileConfig]:
 def _get_valid_label_for_profile(profile: ProfileConfig) -> str:
     profiles = _get_llm_profiles_from_file()
     existing_labels = {p.label for p in profiles if p.label is not None}
-    return _generate_unique_label(profile.label, existing_labels)
+    return _generate_valid_label(profile.label, existing_labels)
 
 
 def add_llm_profile(profile: ProfileConfig):
