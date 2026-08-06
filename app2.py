@@ -10,6 +10,7 @@ from llms import (
     get_available_types_llm_providers,
     get_configured_llm_providers,
     get_llm_profiles,
+    get_llm_profiles_using_provider,
     remove_llm_provider,
     update_llm_profile,
     update_llm_provider,
@@ -72,7 +73,8 @@ def render_llm_provider_form(existing_provider: LLMProviderConfig | None = None)
         if st.form_submit_button("Save", width="stretch"):
             if not provider_type or not api_key:
                 st.error(
-                    "Please provide both the LLM provider type and API key before saving."
+                    "Please provide both the LLM provider type and API key "
+                    "before saving."
                 )
                 return
             if existing_provider:
@@ -83,7 +85,8 @@ def render_llm_provider_form(existing_provider: LLMProviderConfig | None = None)
                 )
                 update_llm_provider(existing_provider, provider)
                 queue_feedback(
-                    f"LLM provider **{provider.label}** (before **{existing_provider.label}**) updated successfully!",
+                    f"LLM provider **{provider.label}** "
+                    f"(before **{existing_provider.label}**) updated successfully!",
                     icon=":material/check_circle:",
                 )
             else:
@@ -349,7 +352,7 @@ def render_llm_profile_form(existing_profile: ProfileConfig | None = None):
 def render_sidebar():
     st.selectbox(
         "Select LLM Profile",
-        options=get_llm_profiles(),
+        options=filter(lambda p: p.enabled, get_llm_profiles()),
         format_func=lambda p: p.label,
         index=None,
         key="profile_selectbox",
@@ -374,10 +377,20 @@ def render_sidebar():
 @st.dialog("Confirm Deletion")
 def render_delete_confirmation(provider):
     st.warning(
-        f"Are you sure you want to delete **{provider.label}**? This action cannot be undone.",
-        icon="⚠️",
+        f"Are you sure you want to delete **{provider.label}**? "
+        "This action cannot be undone."
     )
+    profiles_using_provider = get_llm_profiles_using_provider(provider)
 
+    if profiles_using_provider:
+        st.markdown(
+            "The following LLM profiles are using this provider and "
+            " will be affected by this deletion:"
+        )
+        for profile in profiles_using_provider:
+            st.markdown(f"- **{profile.label}**")
+    else:
+        st.markdown("No LLM profiles are currently using this provider.")
     col_cancel, col_confirm = st.columns(2)
 
     with col_cancel:
@@ -385,8 +398,12 @@ def render_delete_confirmation(provider):
             st.rerun()
 
     with col_confirm:
-        if st.button("Yes, Delete", type="primary", width="stretch"):
+        if st.button("Delete", type="primary", width="stretch"):
             remove_llm_provider(provider)
+            queue_feedback(
+                f"LLM provider **{provider.label}** deleted successfully!",
+                icon=":material/check_circle:",
+            )
             st.rerun()
 
 

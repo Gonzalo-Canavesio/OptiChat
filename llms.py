@@ -25,10 +25,12 @@ class LLMProviderConfig(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    provider_label: str = Field(
+    provider_label: str | None = Field(
         ..., description="The label of the LLM provider to use for the agent."
     )
-    llm_model: str = Field(..., description="The LLM model associated with the agent.")
+    llm_model: str | None = Field(
+        ..., description="The LLM model associated with the agent."
+    )
     temperature: float | None = Field(
         default=None,
         description="Optional temperature setting for the agent's LLM model.",
@@ -40,6 +42,10 @@ class AgentConfig(BaseModel):
         description="Optional maximum token limit for the agent's LLM model.",
         ge=1,
     )
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.provider_label and self.llm_model)
 
 
 class ProfileConfig(BaseModel):
@@ -56,6 +62,15 @@ class ProfileConfig(BaseModel):
     generator_agent: AgentConfig = Field(
         ..., description="Configuration for the Generator Agent."
     )
+
+    @property
+    def enabled(self) -> bool:
+        return (
+            self.root_agent.enabled
+            and self.expert_agent.enabled
+            and self.illustrator_agent.enabled
+            and self.generator_agent.enabled
+        )
 
 
 def _generate_valid_label(base_label: str, existing_labels: set[str]) -> str:
@@ -141,10 +156,15 @@ def update_llm_provider(
 
 
 def remove_llm_provider(provider: LLMProviderConfig):
+    if not provider.label:
+        raise ValueError("Existing provider must have a label.")
+
     providers = _get_configured_llm_providers_from_file()
     providers = [p for p in providers if p != provider]
 
     _save_configured_llm_providers_to_file(providers)
+
+    _remove_provider_from_profiles(provider.label)
 
 
 def _get_env_var_name_for_provider(provider_name: str | None) -> str | None:
@@ -196,6 +216,25 @@ def _update_provider_label_in_profiles(old_label: str, new_label: str):
     _save_configured_llm_profiles_to_file(profiles)
 
 
+def _remove_provider_from_profiles(provider_label: str):
+    profiles = _get_llm_profiles_from_file()
+    for profile in profiles:
+        if profile.root_agent.provider_label == provider_label:
+            profile.root_agent.provider_label = ""
+            profile.root_agent.llm_model = ""
+        if profile.expert_agent.provider_label == provider_label:
+            profile.expert_agent.provider_label = ""
+            profile.expert_agent.llm_model = ""
+        if profile.illustrator_agent.provider_label == provider_label:
+            profile.illustrator_agent.provider_label = ""
+            profile.illustrator_agent.llm_model = ""
+        if profile.generator_agent.provider_label == provider_label:
+            profile.generator_agent.provider_label = ""
+            profile.generator_agent.llm_model = ""
+
+    _save_configured_llm_profiles_to_file(profiles)
+
+
 def get_available_llm_models(provider: LLMProviderConfig) -> list[str]:
     temp_env_var = {_get_env_var_name_for_provider(provider.type): provider.api_key}
     with patch.dict(os.environ, temp_env_var):
@@ -239,3 +278,15 @@ def remove_llm_profile(profile: ProfileConfig):
     profiles = [p for p in profiles if p != profile]
 
     _save_configured_llm_profiles_to_file(profiles)
+
+
+def get_llm_profiles_using_provider(provider: LLMProviderConfig) -> list[ProfileConfig]:
+    profiles = _get_llm_profiles_from_file()
+    return [
+        profile
+        for profile in profiles
+        if profile.root_agent.provider_label == provider.label
+        or profile.expert_agent.provider_label == provider.label
+        or profile.illustrator_agent.provider_label == provider.label
+        or profile.generator_agent.provider_label == provider.label
+    ]
