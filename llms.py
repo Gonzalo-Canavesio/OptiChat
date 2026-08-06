@@ -58,8 +58,15 @@ class ProfileConfig(BaseModel):
     )
 
 
-def get_available_types_llm_providers() -> list[str]:
-    return [provider["type"] for provider in LLM_PROVIDERS]
+def _generate_unique_label(base_label: str, existing_labels: set[str]) -> str:
+    final_label = base_label
+    counter = 2
+
+    while final_label in existing_labels:
+        final_label = f"{base_label} ({counter})"
+        counter += 1
+
+    return final_label
 
 
 def _get_configured_llm_providers_from_file() -> list[LLMProviderConfig]:
@@ -82,19 +89,62 @@ def _get_configured_llm_providers_from_file() -> list[LLMProviderConfig]:
         return [LLMProviderConfig(**provider) for provider in providers]
 
 
+def _save_configured_llm_providers_to_file(providers: list[LLMProviderConfig]):
+    config_path = Path("llm_providers.yaml")
+    with config_path.open("w", encoding="utf-8") as file:
+        serializable_providers = [p.model_dump() for p in providers]
+        yaml.safe_dump({"providers": serializable_providers}, file)
+
+
+def _get_valid_label_for_provider(provider: LLMProviderConfig) -> str:
+    providers = _get_configured_llm_providers_from_file()
+    existing_labels = {p.label for p in providers if p.label is not None}
+    base_label = provider.label if provider.label else provider.type
+    return _generate_unique_label(base_label, existing_labels)
+
+
+def get_available_types_llm_providers() -> list[str]:
+    return [provider["type"] for provider in LLM_PROVIDERS]
+
+
 def get_configured_llm_providers() -> list[LLMProviderConfig]:
     return _get_configured_llm_providers_from_file()
 
 
-def _generate_unique_label(base_label: str, existing_labels: set[str]) -> str:
-    final_label = base_label
-    counter = 2
+def add_llm_provider(provider: LLMProviderConfig):
+    provider.label = _get_valid_label_for_provider(provider)
 
-    while final_label in existing_labels:
-        final_label = f"{base_label} ({counter})"
-        counter += 1
+    providers = _get_configured_llm_providers_from_file()
+    providers.append(provider)
 
-    return final_label
+    _save_configured_llm_providers_to_file(providers)
+
+
+def update_llm_provider(
+    existing_provider: LLMProviderConfig, updated_provider: LLMProviderConfig
+):
+    if not existing_provider.label:
+        raise ValueError("Existing provider must have a label.")
+
+    if not updated_provider.label or existing_provider.label != updated_provider.label:
+        updated_provider.label = _get_valid_label_for_provider(updated_provider)
+
+    providers = _get_configured_llm_providers_from_file()
+    for i, provider in enumerate(providers):
+        if provider.label == existing_provider.label:
+            providers[i] = updated_provider
+            break
+
+    _save_configured_llm_providers_to_file(providers)
+
+    _update_provider_label_in_profiles(existing_provider.label, updated_provider.label)
+
+
+def remove_llm_provider(provider: LLMProviderConfig):
+    providers = _get_configured_llm_providers_from_file()
+    providers = [p for p in providers if p != provider]
+
+    _save_configured_llm_providers_to_file(providers)
 
 
 def _get_env_var_name_for_provider(provider_name: str | None) -> str | None:
@@ -102,12 +152,6 @@ def _get_env_var_name_for_provider(provider_name: str | None) -> str | None:
         if provider["type"] == provider_name:
             return provider["env_api_key_litellm"]
     return None
-
-
-def get_available_llm_models(provider: LLMProviderConfig) -> list[str]:
-    temp_env_var = {_get_env_var_name_for_provider(provider.type): provider.api_key}
-    with patch.dict(os.environ, temp_env_var):
-        return litellm.get_valid_models()
 
 
 def _get_llm_profiles_from_file() -> list[ProfileConfig]:
@@ -130,32 +174,68 @@ def _get_llm_profiles_from_file() -> list[ProfileConfig]:
         return [ProfileConfig(**profile) for profile in profiles]
 
 
-def get_llm_profiles():
-    return _get_llm_profiles_from_file()
-
-
-def add_llm_profile(profile: ProfileConfig):
-    profiles = _get_llm_profiles_from_file()
-    existing_labels = {p.label for p in profiles if p.label is not None}
-    profile.label = _generate_unique_label(profile.label, existing_labels)
-    profiles.append(profile)
-
+def _save_configured_llm_profiles_to_file(profiles: list[ProfileConfig]):
     config_path = Path("llm_profiles.yaml")
     with config_path.open("w", encoding="utf-8") as file:
         serializable_profiles = [p.model_dump() for p in profiles]
         yaml.safe_dump({"profiles": serializable_profiles}, file)
 
 
-def add_llm_provider(provider: LLMProviderConfig):
-    providers = _get_configured_llm_providers_from_file()
-    existing_labels = {
-        p.label for p in providers if p.type == provider.type and p.label is not None
-    }
-    base_label = provider.label if provider.label else provider.type
-    provider.label = _generate_unique_label(base_label, existing_labels)
-    providers.append(provider)
+def _update_provider_label_in_profiles(old_label: str, new_label: str):
+    profiles = _get_llm_profiles_from_file()
+    for profile in profiles:
+        if profile.root_agent.provider_label == old_label:
+            profile.root_agent.provider_label = new_label
+        if profile.expert_agent.provider_label == old_label:
+            profile.expert_agent.provider_label = new_label
+        if profile.illustrator_agent.provider_label == old_label:
+            profile.illustrator_agent.provider_label = new_label
+        if profile.generator_agent.provider_label == old_label:
+            profile.generator_agent.provider_label = new_label
 
-    config_path = Path("llm_providers.yaml")
-    with config_path.open("w", encoding="utf-8") as file:
-        serializable_providers = [p.model_dump() for p in providers]
-        yaml.safe_dump({"providers": serializable_providers}, file)
+    _save_configured_llm_profiles_to_file(profiles)
+
+
+def get_available_llm_models(provider: LLMProviderConfig) -> list[str]:
+    temp_env_var = {_get_env_var_name_for_provider(provider.type): provider.api_key}
+    with patch.dict(os.environ, temp_env_var):
+        return litellm.get_valid_models()
+
+
+def get_llm_profiles() -> list[ProfileConfig]:
+    return _get_llm_profiles_from_file()
+
+
+def _get_valid_label_for_profile(profile: ProfileConfig) -> str:
+    profiles = _get_llm_profiles_from_file()
+    existing_labels = {p.label for p in profiles if p.label is not None}
+    return _generate_unique_label(profile.label, existing_labels)
+
+
+def add_llm_profile(profile: ProfileConfig):
+    profile.label = _get_valid_label_for_profile(profile)
+
+    profiles = _get_llm_profiles_from_file()
+    profiles.append(profile)
+
+    _save_configured_llm_profiles_to_file(profiles)
+
+
+def update_llm_profile(existing_profile: ProfileConfig, updated_profile: ProfileConfig):
+    if existing_profile.label != updated_profile.label:
+        updated_profile.label = _get_valid_label_for_profile(updated_profile)
+
+    profiles = _get_llm_profiles_from_file()
+    for i, profile in enumerate(profiles):
+        if profile.label == existing_profile.label:
+            profiles[i] = updated_profile
+            break
+
+    _save_configured_llm_profiles_to_file(profiles)
+
+
+def remove_llm_profile(profile: ProfileConfig):
+    profiles = _get_llm_profiles_from_file()
+    profiles = [p for p in profiles if p != profile]
+
+    _save_configured_llm_profiles_to_file(profiles)
