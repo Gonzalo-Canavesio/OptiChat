@@ -15,6 +15,7 @@ from llms import (
     remove_llm_provider,
     update_llm_profile,
     update_llm_provider,
+    valid_key_for_model,
 )
 
 
@@ -312,11 +313,17 @@ def _handle_form_submission_llm_profile(
 ):
     if not profile_label:
         st.error("Please provide a label for your LLM profile before saving.")
-        return
+        return False
     if mode == "Simple":
         if not selected_provider or not selected_model:
             st.error("Please provide both the LLM provider and model before saving.")
-            return
+            return False
+        if not valid_key_for_model(selected_provider, selected_model):
+            st.error(
+                "The selected LLM provider and model combination is invalid. "
+                "Ensure that the API key is correct and that the model is available."
+            )
+            return False
         profile = ProfileConfig(
             label=profile_label,
             root_agent=AgentConfig(
@@ -339,13 +346,21 @@ def _handle_form_submission_llm_profile(
     elif mode == "Advanced":
         if not selected:
             st.error("Please provide configurations for all agents before saving.")
-            return
+            return False
         for agent_label, agent_config in selected.items():
             if not agent_config["provider"] or not agent_config["model"]:
                 st.error(
-                    f"Please provide both the LLM provider and model for {agent_label} before saving."
+                    f"Please provide both the LLM provider and model for "
+                    f"{agent_label} before saving."
                 )
-                return
+                return False
+            if not valid_key_for_model(agent_config["provider"], agent_config["model"]):
+                st.error(
+                    f"The selected LLM provider and model combination for "
+                    f"{agent_label} is invalid. Ensure that the API key is correct "
+                    "and that the model is available."
+                )
+                return False
         profile = ProfileConfig(
             label=profile_label,
             root_agent=AgentConfig(
@@ -386,6 +401,7 @@ def _handle_form_submission_llm_profile(
             f"LLM profile **{profile.label}** added successfully!",  # pyright: ignore[reportPossiblyUnboundVariable]
             icon=":material/check_circle:",
         )
+    return True
 
 
 def _clean_session_state_for_profile_form():
@@ -435,16 +451,16 @@ def render_llm_profile_form(existing_profile: ProfileConfig | None = None):
             value=existing_profile.label if existing_profile else "",
         )
         if st.form_submit_button("Save", width="stretch"):
-            _handle_form_submission_llm_profile(
+            if _handle_form_submission_llm_profile(
                 mode,
                 selected_provider,
                 selected_model,
                 selected,
                 existing_profile,
                 profile_label,
-            )
-            _clean_session_state_for_profile_form()
-            st.rerun()
+            ):
+                _clean_session_state_for_profile_form()
+                st.rerun()
 
 
 def render_sidebar():

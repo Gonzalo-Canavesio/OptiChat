@@ -238,7 +238,11 @@ def _remove_provider_from_profiles(provider_label: str):
 def get_available_llm_models(provider: LLMProviderConfig) -> list[str]:
     temp_env_var = {_get_env_var_name_for_provider(provider.type): provider.api_key}
     with patch.dict(os.environ, temp_env_var):
-        return litellm.get_valid_models()
+        return litellm.get_valid_models(check_provider_endpoint=True)
+
+
+def valid_key_for_model(provider: LLMProviderConfig, model: str) -> bool:
+    return litellm.check_valid_key(model=model, api_key=provider.api_key)
 
 
 def get_llm_profiles() -> list[ProfileConfig]:
