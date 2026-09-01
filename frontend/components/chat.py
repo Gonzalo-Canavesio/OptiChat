@@ -16,7 +16,7 @@ AVAILABLE_MODELING_LANGUAGES: list[ModelingLanguage] = [
 
 
 def _handle_create_chat_submission(
-    model_file: UploadedFile | None,
+    model_files: list[UploadedFile] | None,
     data_files: list[UploadedFile] | None,
     modeling_language: ModelingLanguage | None,
     profile: ProfileConfig,
@@ -26,13 +26,13 @@ def _handle_create_chat_submission(
     if modeling_language is None:
         st.error("Please select a modeling language.")
         return False
-    if model_file is None:
+    if model_files is None:
         st.error("Please upload a .py model file.")
         return False
 
     with st.spinner("Initializing model and starting chat..."):
         chat = create_chat(
-            model_file=model_file,
+            model_files=model_files,
             data_files=data_files,
             modeling_language=modeling_language,
             profile_label=profile.label,
@@ -85,12 +85,12 @@ def render_create_chat_dialog() -> None:
         )
 
     with st.form("create_chat_dialog_form", border=False):
-        model_file: UploadedFile | None = st.file_uploader(
-            "Model file (.py) (Required)",
+        model_files = st.file_uploader(
+            "Model files (.py) (Required)",
             type=["py"],
-            accept_multiple_files=False,
+            accept_multiple_files=True,
         )
-        data_files: list[UploadedFile] | None = st.file_uploader(
+        data_files = st.file_uploader(
             "Data files (Optional)",
             accept_multiple_files=True,
         )
@@ -104,7 +104,7 @@ def render_create_chat_dialog() -> None:
 
     if submitted:
         if _handle_create_chat_submission(
-            model_file=model_file,
+            model_files=model_files,
             data_files=data_files,
             modeling_language=selected_language,
             profile=profile,
