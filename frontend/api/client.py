@@ -1,5 +1,3 @@
-from typing import Any
-
 import requests
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
@@ -11,11 +9,10 @@ API_BASE_URL = "http://localhost:8000"
 def fetch_chats() -> list[ChatInfo]:
     try:
         response = requests.get(f"{API_BASE_URL}/chats", timeout=10)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-    return []
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return []
 
 
 def create_chat(
@@ -26,7 +23,7 @@ def create_chat(
     solver: str,
     chat_name: str = "",
 ) -> ChatInfo | None:
-    data = {
+    payload = {
         "profile_label": profile_label,
         "modeling_language": modeling_language,
         "solver": "gurobi" if modeling_language == "gurobipy" else solver,
@@ -47,8 +44,8 @@ def create_chat(
 
     try:
         response = requests.post(
-            f"{API_BASE_URL}/chat/create",
-            data=data,
+            f"{API_BASE_URL}/chats",
+            data=payload,
             files=files,
             timeout=120,
         )
@@ -59,13 +56,13 @@ def create_chat(
 
 
 def send_message(
-    chat_id: str,
-    message: str,
-    profile_label: str | None = None,
-) -> str | None:
-    payload: dict[str, Any] = {"message": message}
-    if profile_label:
-        payload["profile_id"] = profile_label
+    chat_id: str, message: str, profile_label: str, solver: str
+) -> ChatInfo | None:
+    payload = {
+        "message": message,
+        "profile_label": profile_label,
+        "solver": solver,
+    }
 
     try:
         response = requests.post(
@@ -73,9 +70,7 @@ def send_message(
             json=payload,
             timeout=1800,
         )
-        if response.status_code == 200:
-            return response.json().get("response", "")
-    except Exception:
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
         return None
-
-    return None

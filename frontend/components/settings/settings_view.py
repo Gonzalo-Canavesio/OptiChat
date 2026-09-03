@@ -52,7 +52,7 @@ def _render_provider_item(provider: LLMProviderConfig) -> None:
 def _render_providers_section() -> None:
     st.text("Manage your LLM providers below. You can add, edit, or delete providers.")
     if st.button(
-        "",
+        "New Provider",
         type="primary",
         help="Add a new LLM provider.",
         width="stretch",
@@ -103,7 +103,7 @@ def _render_profile_item(profile: ProfileConfig) -> None:
 def _render_profiles_section() -> None:
     st.text("Manage your LLM profiles below. You can add, edit, or delete profiles.")
     if st.button(
-        "",
+        "New Profile",
         type="primary",
         help="Add a new LLM profile.",
         width="stretch",

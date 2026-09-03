@@ -5,7 +5,6 @@ import streamlit as st
 from llms import ProfileConfig
 
 ViewType = Literal["chat", "settings"]
-RoleType = Literal["user", "assistant"]
 
 PyomoSolver = Literal["GLPK", "CBC", "HiGHS", "Gurobi", "CPLEX", "SCIP"]
 AVAILABLE_SOLVERS: list[PyomoSolver] = [
@@ -19,15 +18,15 @@ AVAILABLE_SOLVERS: list[PyomoSolver] = [
 
 
 class ChatMessage(TypedDict):
-    role: RoleType
+    role: Literal["user", "assistant"]
     content: str
+    thought: NotRequired[str | None]
 
 
 class ChatInfo(TypedDict):
     id: str
     name: str
-    model_file: NotRequired[str]
-    initial_response: NotRequired[str]
+    messages: NotRequired[list[ChatMessage]]
 
 
 class SessionStateManager:
@@ -36,10 +35,6 @@ class SessionStateManager:
             st.session_state["current_view"] = "chat"
         if "current_chat" not in st.session_state:
             st.session_state["current_chat"] = None
-        if "chat_messages" not in st.session_state:
-            st.session_state["chat_messages"] = []
-        if "chat_histories" not in st.session_state:
-            st.session_state["chat_histories"] = {}
         if "feedback" not in st.session_state:
             st.session_state["feedback"] = []
 
@@ -58,22 +53,6 @@ class SessionStateManager:
     @current_chat.setter
     def current_chat(self, value: ChatInfo | None) -> None:
         st.session_state["current_chat"] = value
-
-    @property
-    def chat_messages(self) -> list[ChatMessage]:
-        if "chat_messages" not in st.session_state:
-            st.session_state["chat_messages"] = []
-        return st.session_state["chat_messages"]
-
-    @chat_messages.setter
-    def chat_messages(self, value: list[ChatMessage]) -> None:
-        st.session_state["chat_messages"] = value
-
-    @property
-    def chat_histories(self) -> dict[str, list[ChatMessage]]:
-        if "chat_histories" not in st.session_state:
-            st.session_state["chat_histories"] = {}
-        return st.session_state["chat_histories"]
 
     @property
     def selected_profile(self) -> ProfileConfig | None:

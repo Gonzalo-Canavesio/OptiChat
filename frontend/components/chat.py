@@ -44,14 +44,7 @@ def _handle_create_chat_submission(
         st.error("Failed to create chat. Please check your backend connection.")
         return False
 
-    chat_id = chat.get("id", "")
-    initial_response = chat.get("initial_response", "")
-
     state.current_chat = chat
-    state.chat_messages = [{"role": "assistant", "content": initial_response}]
-    if chat_id:
-        state.chat_histories[chat_id] = state.chat_messages
-
     return True
 
 
@@ -59,13 +52,13 @@ def _handle_create_chat_submission(
     "Create New Chat", width="medium", on_dismiss=clean_session_state_for_chat_form
 )
 def render_create_chat_dialog() -> None:
-    profile = state.selected_profile
-    solver = state.selected_solver
-    if profile is None:
+    if state.selected_profile is None:
         st.warning("Please select an LLM profile in the sidebar first.")
-    if solver is None:
+        if st.button("Close", width="stretch"):
+            st.rerun()
+        return
+    if state.selected_solver is None:
         st.warning("Please select a solver in the sidebar first.")
-    if profile is None or solver is None:
         if st.button("Close", width="stretch"):
             st.rerun()
         return
@@ -98,17 +91,15 @@ def render_create_chat_dialog() -> None:
             "Chat name (Optional)",
             help="Leave empty for auto-generated name.",
         )
-        submitted = st.form_submit_button(
-            "Create Chat", type="primary", width="stretch"
-        )
+        submitted = st.form_submit_button("Create", type="primary", width="stretch")
 
     if submitted:
         if _handle_create_chat_submission(
             model_files=model_files,
             data_files=data_files,
             modeling_language=selected_language,
-            profile=profile,
-            solver=solver,
+            profile=state.selected_profile,
+            solver=state.selected_solver,
             chat_name=chat_name,
         ):
             clean_session_state_for_chat_form()
@@ -116,10 +107,19 @@ def render_create_chat_dialog() -> None:
 
 
 def _render_empty_chat_placeholder() -> None:
-    st.markdown("### No active conversation")
-    st.caption("Start a new chat to begin analyzing an optimization model.")
-    if st.button("💬 Start New Chat"):
+    st.markdown("# No active conversation")
+    st.write(":gray[Start a new chat to begin analyzing an optimization model.]")
+    if st.button("New Chat", icon=":material/add:", type="primary"):
         render_create_chat_dialog()
+
+
+def _render_chat_message(message: ChatMessage) -> None:
+    with st.chat_message(message["role"]):
+        thought = message.get("thought")
+        if thought:
+            with st.expander(":gray[Thoughts...]", expanded=False):
+                st.markdown(thought)
+        st.markdown(message["content"])
 
 
 def render_active_chat() -> None:
@@ -127,43 +127,36 @@ def render_active_chat() -> None:
     if not chat:
         return
 
-    chat_id = chat.get("id", "")
-    chat_name = chat.get("name", "Active Chat")
-    model_file = chat.get("model_file", "")
+    messages = chat.get("messages", [])
 
-    st.title(chat_name)
-    st.caption(f"Model: {model_file}")
-
-    messages: list[ChatMessage] = state.chat_messages
-    for message in messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    for msg in messages:
+        _render_chat_message(msg)
 
     if prompt := st.chat_input("Enter your query here..."):
-        messages.append({"role": "user", "content": prompt})
+        if not state.selected_profile:
+            st.error("Please select an LLM profile in the sidebar first.")
+            return
+        if not state.selected_solver:
+            st.error("Please select a solver in the sidebar first.")
+            return
+
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        selected_profile = state.selected_profile
         with st.spinner("Thinking..."):
-            response = send_message(
-                chat_id=chat_id,
+            new_chat = send_message(
+                chat_id=chat["id"],
                 message=prompt,
-                profile_label=selected_profile.label if selected_profile else None,
+                profile_label=state.selected_profile.label,
+                solver=state.selected_solver,
             )
 
-        if response is None:
-            messages.pop()
-            state.chat_messages = messages
+        if new_chat is None:
+            st.error("Failed to send message. Please check your backend connection.")
             return
 
-        messages.append({"role": "assistant", "content": response})
-        with st.chat_message("assistant"):
-            st.markdown(response)
-
-        state.chat_messages = messages
-        if chat_id:
-            state.chat_histories[chat_id] = messages
+        state.current_chat = new_chat
+        st.rerun()
 
 
 def render_chat_view() -> None:

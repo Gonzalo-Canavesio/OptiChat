@@ -30,7 +30,7 @@ def render_sidebar() -> None:
 
     st.divider()
 
-    if st.button("💬 Start New Chat", width="stretch"):
+    if st.button("New Chat", width="stretch", icon=":material/add:", type="primary"):
         render_create_chat_dialog()
 
     chats = fetch_chats()
@@ -39,7 +39,9 @@ def render_sidebar() -> None:
             chat["name"],
             width="stretch",
             key=f"chat_btn_{chat['id']}",
+            type="secondary"
+            if state.current_chat and chat["id"] == state.current_chat["id"]
+            else "tertiary",
         ):
             state.current_chat = chat
-            state.chat_messages = state.chat_histories.get(chat["id"], [])
             st.rerun()
