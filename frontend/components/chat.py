@@ -52,15 +52,7 @@ def _handle_create_chat_submission(
     "Create New Chat", width="medium", on_dismiss=clean_session_state_for_chat_form
 )
 def render_create_chat_dialog() -> None:
-    if state.selected_profile is None:
-        st.warning("Please select an LLM profile in the sidebar first.")
-        if st.button("Close", width="stretch"):
-            st.rerun()
-        return
-    if state.selected_solver is None:
-        st.warning("Please select a solver in the sidebar first.")
-        if st.button("Close", width="stretch"):
-            st.rerun()
+    if state.selected_profile is None or state.selected_solver is None:
         return
 
     selected_language = st.selectbox(
@@ -110,7 +102,12 @@ def _render_empty_chat_placeholder() -> None:
     st.markdown("# No active conversation")
     st.write(":gray[Start a new chat to begin analyzing an optimization model.]")
     if st.button("New Chat", icon=":material/add:", type="primary"):
-        render_create_chat_dialog()
+        if not state.selected_profile:
+            st.error("Please select an LLM profile in the sidebar first.")
+        if not state.selected_solver:
+            st.error("Please select a solver in the sidebar first.")
+        if state.selected_profile and state.selected_solver:
+            render_create_chat_dialog()
 
 
 def _render_chat_message(message: ChatMessage) -> None:

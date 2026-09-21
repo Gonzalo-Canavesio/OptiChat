@@ -31,7 +31,12 @@ def render_sidebar() -> None:
     st.divider()
 
     if st.button("New Chat", width="stretch", icon=":material/add:", type="primary"):
-        render_create_chat_dialog()
+        if not state.selected_profile:
+            st.error("Please select an LLM profile in the sidebar first.")
+        if not state.selected_solver:
+            st.error("Please select a solver in the sidebar first.")
+        if state.selected_profile and state.selected_solver:
+            render_create_chat_dialog()
 
     chats = fetch_chats()
     for chat in chats:
