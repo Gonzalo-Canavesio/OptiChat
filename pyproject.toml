@@ -5,7 +5,8 @@ description = "Conversational assistant for feasible and infeasible optimization
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "google-adk>=1.31.1",
+    "fastapi>=0.136.1",
+    "google-adk>=2.9.2",
     "gurobipy>=13.0.1",
     "langchain>=1.2.15",
     "langchain-chroma>=1.1.0",
@@ -17,8 +18,10 @@ dependencies = [
     "openai>=2.32.0",
     "pydantic>=2.13.3",
     "pyomo>=6.10.0",
-    "streamlit>=1.56.0",
+    "python-multipart>=0.0.27",
+    "streamlit>=1.64.0",
     "tiktoken>=0.12.0",
+    "uvicorn>=0.46.0",
 ]
 
 [dependency-groups]
