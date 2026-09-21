@@ -18,6 +18,7 @@ AVAILABLE_MODELING_LANGUAGES: list[ModelingLanguage] = [
 def _handle_create_chat_submission(
     model_files: list[UploadedFile] | None,
     data_files: list[UploadedFile] | None,
+    model_paper: UploadedFile | None,
     modeling_language: ModelingLanguage | None,
     profile: ProfileConfig,
     solver: str,
@@ -34,6 +35,7 @@ def _handle_create_chat_submission(
         chat = create_chat(
             model_files=model_files,
             data_files=data_files,
+            model_paper=model_paper,
             modeling_language=modeling_language,
             profile_label=profile.label,
             solver=solver,
@@ -83,12 +85,18 @@ def render_create_chat_dialog() -> None:
             "Chat name (Optional)",
             help="Leave empty for auto-generated name.",
         )
+        model_paper = st.file_uploader(
+            "Model paper (Optional)",
+            type=["pdf", "md", "txt"],
+            help="Upload a file describing your model. This can help the LLM understand your model better.",
+        )
         submitted = st.form_submit_button("Create", type="primary", width="stretch")
 
     if submitted:
         if _handle_create_chat_submission(
             model_files=model_files,
             data_files=data_files,
+            model_paper=model_paper,
             modeling_language=selected_language,
             profile=state.selected_profile,
             solver=state.selected_solver,

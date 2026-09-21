@@ -18,6 +18,7 @@ def fetch_chats() -> list[ChatInfo]:
 def create_chat(
     model_files: list[UploadedFile],
     data_files: list[UploadedFile] | None,
+    model_paper: UploadedFile | None,
     modeling_language: str,
     profile_label: str,
     solver: str,
@@ -40,6 +41,12 @@ def create_chat(
         content_type = data_file.type or "application/octet-stream"
         files.append(
             ("data_files", (data_file.name, data_file.getvalue(), content_type))
+        )
+
+    if model_paper:
+        content_type = model_paper.type or "application/octet-stream"
+        files.append(
+            ("model_paper", (model_paper.name, model_paper.getvalue(), content_type))
         )
 
     try:
