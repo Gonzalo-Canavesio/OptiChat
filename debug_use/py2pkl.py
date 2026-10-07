@@ -21,7 +21,7 @@ from pathlib import Path
 # Allow running from the repo root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from optichat.tools.extract_tool import save_model_object
+from optichat.backend.tools.extract_tool import save_model_object
 
 
 def main():

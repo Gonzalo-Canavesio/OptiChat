@@ -12,7 +12,7 @@ trap cleanup SIGINT
 
 # Start ADK API Server in background
 echo "Starting ADK API Server..."
-uv run adk api_server &
+uv run adk api_server optichat &
 ADK_PID=$!
 
 # Wait for API server to be ready (simple sleep for now, could be more robust)

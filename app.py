@@ -11,7 +11,7 @@ st.set_page_config(layout='wide', page_title="OptiChat")
 st.title("OptiChat: Talk to your Optimization Model")
 
 API_BASE_URL = "http://localhost:8000"
-APP_NAME = "optichat"
+APP_NAME = "backend"
 
 # --- Sidebar ---
 METADATA_PATH = "tmp/model_objects/metadata.json"
