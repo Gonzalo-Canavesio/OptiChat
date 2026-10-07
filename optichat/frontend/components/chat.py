@@ -4,8 +4,12 @@ import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from optichat.frontend.api.client import create_chat, send_message
-from optichat.frontend.state import ChatMessage, clean_session_state_for_chat_form, state
-from llms import ProfileConfig
+from optichat.frontend.state import (
+    ChatMessage,
+    clean_session_state_for_chat_form,
+    state,
+)
+from optichat.llm.models import ProfileConfig
 
 ModelingLanguage = Literal["Pyomo", "GAMSPy", "gurobipy"]
 AVAILABLE_MODELING_LANGUAGES: list[ModelingLanguage] = [

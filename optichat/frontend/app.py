@@ -1,12 +1,13 @@
 import streamlit as st
 
-from llms import get_configured_llm_providers, get_llm_profiles
 from optichat.frontend.components.chat import render_chat_view
 from optichat.frontend.components.settings.profile_form import render_llm_profile_form
 from optichat.frontend.components.settings.provider_form import render_llm_provider_form
 from optichat.frontend.components.settings.settings_view import render_settings_view
 from optichat.frontend.components.sidebar import render_sidebar
 from optichat.frontend.state import configure_page, run_toasts, state
+from optichat.llm.profiles import get_llm_profiles
+from optichat.llm.providers import get_configured_llm_providers
 
 
 def run_interface() -> None:

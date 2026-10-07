@@ -3,7 +3,7 @@ import streamlit as st
 from optichat.frontend.api.client import fetch_chats
 from optichat.frontend.components.chat import render_create_chat_dialog
 from optichat.frontend.state import AVAILABLE_SOLVERS, state
-from llms import get_llm_profiles
+from optichat.llm.profiles import get_llm_profiles
 
 
 def render_sidebar() -> None:

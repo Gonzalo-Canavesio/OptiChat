@@ -2,7 +2,7 @@ from typing import Any, Literal, NotRequired, TypedDict
 
 import streamlit as st
 
-from llms import ProfileConfig
+from optichat.llm.models import ProfileConfig
 
 ViewType = Literal["chat", "settings"]
 

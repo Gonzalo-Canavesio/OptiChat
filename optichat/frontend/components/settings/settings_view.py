@@ -9,12 +9,9 @@ from optichat.frontend.components.settings.provider_form import (
     render_llm_provider_form,
 )
 from optichat.frontend.state import clean_session_state_for_profile_form, state
-from llms import (
-    LLMProviderConfig,
-    ProfileConfig,
-    get_configured_llm_providers,
-    get_llm_profiles,
-)
+from optichat.llm.models import LLMProviderConfig, ProfileConfig
+from optichat.llm.profiles import get_llm_profiles
+from optichat.llm.providers import get_configured_llm_providers
 
 
 def _render_provider_item(provider: LLMProviderConfig) -> None:

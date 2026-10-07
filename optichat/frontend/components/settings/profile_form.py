@@ -3,17 +3,14 @@ from typing import Any
 import streamlit as st
 
 from optichat.frontend.state import clean_session_state_for_profile_form, queue_feedback
-from llms import (
-    AgentConfig,
-    LLMProviderConfig,
-    ProfileConfig,
+from optichat.llm.catalog import get_available_llm_models, valid_key_for_model
+from optichat.llm.models import AgentConfig, LLMProviderConfig, ProfileConfig
+from optichat.llm.profiles import (
     add_llm_profile,
-    get_available_llm_models,
-    get_configured_llm_providers,
     remove_llm_profile,
     update_llm_profile,
-    valid_key_for_model,
 )
+from optichat.llm.providers import get_configured_llm_providers
 
 
 def _get_provider_index(

@@ -1,11 +1,11 @@
 import streamlit as st
 
 from optichat.frontend.state import queue_feedback
-from llms import (
-    LLMProviderConfig,
+from optichat.llm.models import LLMProviderConfig
+from optichat.llm.profiles import get_llm_profiles_using_provider
+from optichat.llm.providers import (
     add_llm_provider,
     get_available_types_llm_providers,
-    get_llm_profiles_using_provider,
     remove_llm_provider,
     update_llm_provider,
 )
