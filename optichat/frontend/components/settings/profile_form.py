@@ -3,7 +3,7 @@ from typing import Any
 import streamlit as st
 
 from optichat.frontend.state import clean_session_state_for_profile_form, queue_feedback
-from optichat.llm.catalog import get_available_llm_models, valid_key_for_model
+from optichat.llm.catalog import get_available_llm_models, get_model_validation_error
 from optichat.llm.models import AgentConfig, LLMProviderConfig, ProfileConfig
 from optichat.llm.profiles import (
     add_llm_profile,
@@ -223,10 +223,11 @@ def _build_simple_profile(
         st.error("Please provide both the LLM provider and model before saving.")
         return None
 
-    if not valid_key_for_model(selected_provider, selected_model):
+    error = get_model_validation_error(selected_provider, selected_model)
+    if error:
         st.error(
-            "The selected LLM provider and model combination is invalid. "
-            "Ensure that the API key is correct and that the model is available."
+            "The selected LLM provider and model combination is invalid.\n\n"
+            f"Provider error: {error}"
         )
         return None
 
@@ -262,11 +263,11 @@ def _build_advanced_profile(
             )
             return None
 
-        if not valid_key_for_model(provider, model):
+        error = get_model_validation_error(provider, model)
+        if error:
             st.error(
                 f"The selected LLM provider and model combination for {agent_label} is "
-                "invalid. Ensure that the API key is correct and that the model is "
-                "available."
+                f"invalid.\n\nProvider error: {error}"
             )
             return None
 

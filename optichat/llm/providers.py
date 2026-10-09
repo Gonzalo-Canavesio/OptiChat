@@ -48,6 +48,13 @@ def get_configured_llm_providers() -> list[LLMProviderConfig]:
     return _get_configured_llm_providers_from_file()
 
 
+def get_llm_provider_by_label(label: str | None) -> LLMProviderConfig | None:
+    return next(
+        (p for p in _get_configured_llm_providers_from_file() if p.label == label),
+        None,
+    )
+
+
 def add_llm_provider(provider: LLMProviderConfig):
     provider.label = _get_valid_label_for_provider(provider)
 

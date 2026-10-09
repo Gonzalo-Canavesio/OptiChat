@@ -1,10 +1,10 @@
 from google.adk.agents import Agent
 from google.adk.tools.agent_tool import AgentTool
 
-from optichat.backend.config.constants import OUTPUT_KEY_EXPERT_AGENT
-from optichat.backend.config.llm import expert_model
 from optichat.backend.agents.expert.prompt import get_expert_agent_prompt
 from optichat.backend.agents.generator.agent import create_generator_agent
+from optichat.backend.config.constants import OUTPUT_KEY_EXPERT_AGENT
+from optichat.backend.config.llm import build_adk_model
 from optichat.backend.tools.callback_tool import (
     check_expert_agent_runtime,
     check_is_expert_agent_used,
@@ -13,13 +13,17 @@ from optichat.backend.tools.callback_tool import (
     check_tool_response,
     check_tool_usage,
 )
-from optichat.backend.tools.custom_tool import infeasibility_diagnosis, robustness_analysis
+from optichat.backend.tools.custom_tool import (
+    infeasibility_diagnosis,
+    robustness_analysis,
+)
 from optichat.backend.tools.search_tool import get_model_components
+from optichat.llm.models import ProfileConfig
 
 
-def create_expert_agent(prompt_version=1, tools_version=1):
+def create_expert_agent(profile: ProfileConfig, prompt_version=1, tools_version=1):
     expert_agent_prompt = get_expert_agent_prompt(prompt_version)
-    generator_tool = AgentTool(agent=create_generator_agent())
+    generator_tool = AgentTool(agent=create_generator_agent(profile))
     if tools_version == 1:
         expert_agent_tools = [
             get_model_components,
@@ -39,7 +43,7 @@ def create_expert_agent(prompt_version=1, tools_version=1):
 
     expert_agent = Agent(
         name="expert_agent",
-        model=expert_model,
+        model=build_adk_model(profile.expert_agent),
         tools=expert_agent_tools,
         description=(
             "Optimization & operations research expert that "

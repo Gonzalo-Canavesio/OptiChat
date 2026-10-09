@@ -78,3 +78,7 @@ CLAUDE.md
 /run_auto_tests.sh
 /hybrid_verifier.py
 *.ipynb
+
+# Local LLM configuration (contains API keys)
+/.llm_profiles.yaml
+/.llm_providers.yaml

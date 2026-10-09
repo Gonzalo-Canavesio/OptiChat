@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import re
 import traceback as tb
 from collections.abc import AsyncGenerator
@@ -13,16 +12,17 @@ from google.adk.events import Event, EventActions
 from google.genai import types
 from langchain_experimental.utilities import PythonREPL
 from loguru import logger
-from pydantic import PrivateAttr
+from pydantic import Field, PrivateAttr
 
+from optichat.backend.agents.generator.prompt import get_coder_prompt
 from optichat.backend.config.constants import (
     GENERATOR_OUTPUT,
     MODEL_VERSIONS,
     MODELS_DICTIONARY,
 )
-from optichat.backend.config.llm import coder_model_name
-from optichat.backend.agents.generator.prompt import get_coder_prompt
+from optichat.backend.config.llm import get_litellm_params
 from optichat.backend.tools.callback_tool import _get_source_code_for_prompt
+from optichat.llm.models import ProfileConfig
 
 _PYTHON_REPL_TOOL = {
     "type": "function",
@@ -143,6 +143,7 @@ class CoderAgent(BaseAgent):
       4. Loop exits when codex stops calling tools.
     """
 
+    llm_params: dict = Field(default_factory=dict, repr=False)
     _repl: PythonREPL = PrivateAttr(default_factory=PythonREPL)
 
     async def _run_async_impl(
@@ -180,10 +181,9 @@ class CoderAgent(BaseAgent):
         max_iterations = 10
         for iteration in range(1, max_iterations + 1):
             response = await litellm.acompletion(
-                model=coder_model_name,
                 messages=messages,
                 tools=[_PYTHON_REPL_TOOL],
-                api_key=os.getenv("API_KEY"),
+                **self.llm_params,
             )
 
             assistant_msg = response.choices[0].message
@@ -281,7 +281,7 @@ class CoderAgent(BaseAgent):
 # ---------------------------------------------------------------------------
 
 
-def create_generator_agent() -> CoderAgent:
+def create_generator_agent(profile: ProfileConfig) -> CoderAgent:
     """
     Create the generator agent.
 
@@ -293,6 +293,7 @@ def create_generator_agent() -> CoderAgent:
     """
     return CoderAgent(
         name="generator_agent",
+        llm_params=get_litellm_params(profile.generator_agent),
         description=(
             "Pyomo code generator and executor. Receives a structured instruction "
             "from the expert agent, writes Python/Pyomo code, and executes it via "

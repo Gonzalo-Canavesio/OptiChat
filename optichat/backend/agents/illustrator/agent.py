@@ -1,7 +1,7 @@
 from google.adk.agents import Agent
 
-from optichat.backend.config.llm import illustrator_model
 from optichat.backend.agents.illustrator.prompt import ILLUSTRATOR_PROMPT
+from optichat.backend.config.llm import build_adk_model
 from optichat.backend.tools.callback_tool import (
     check_illustrator_agent_runtime,
     check_llm_request,
@@ -11,12 +11,13 @@ from optichat.backend.tools.callback_tool import (
     diagnose_if_infeasible,
 )
 from optichat.backend.tools.illustrator_tool import get_model_info_for_description
+from optichat.llm.models import ProfileConfig
 
 
-def create_illustrator_agent():
+def create_illustrator_agent(profile: ProfileConfig):
     illustrator_agent = Agent(
         name="illustrator_agent",
-        model=illustrator_model,
+        model=build_adk_model(profile.illustrator_agent),
         tools=[get_model_info_for_description],
         description=(
             "Generates comprehensive descriptions of optimization models "

@@ -44,6 +44,10 @@ def get_llm_profiles() -> list[ProfileConfig]:
     return _get_llm_profiles_from_file()
 
 
+def get_llm_profile_by_label(label: str | None) -> ProfileConfig | None:
+    return next((p for p in _get_llm_profiles_from_file() if p.label == label), None)
+
+
 def _get_valid_label_for_profile(profile: ProfileConfig) -> str:
     profiles = _get_llm_profiles_from_file()
     existing_labels = {p.label for p in profiles if p.label is not None}

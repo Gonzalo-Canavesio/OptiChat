@@ -1,33 +1,57 @@
 import os
+from typing import Any
 
-import yaml
-from dotenv import load_dotenv
 from google.adk.models.lite_llm import LiteLlm
 
-env_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env")
-load_dotenv(dotenv_path=env_path)
+from optichat.llm.catalog import resolve_litellm_model
+from optichat.llm.models import AgentConfig, ProfileConfig
+from optichat.llm.profiles import get_llm_profile_by_label, get_llm_profiles
+from optichat.llm.providers import get_llm_provider_by_label
 
-PROVIDER = os.getenv("PROVIDER")
-API_KEY = os.getenv("API_KEY")
+PROFILE_ENV_VAR = "OPTICHAT_PROFILE"
 
-if not PROVIDER:
-    raise ValueError("PROVIDER environment variable is not set.")
-if not API_KEY:
-    raise ValueError("API_KEY environment variable is not set.")
 
-config_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config_agents.yaml")
-with open(config_path, encoding="utf-8") as file:
-    config = yaml.safe_load(file)
+def get_litellm_params(agent_config: AgentConfig) -> dict[str, Any]:
+    """Resolve an agent's provider/model settings into LiteLLM completion kwargs."""
+    if not agent_config.enabled:
+        raise ValueError("The agent has no LLM provider and model configured.")
 
-if PROVIDER not in config:
-    raise ValueError(f"The provider '{PROVIDER}' was not found in config_agents.yaml")
+    provider = get_llm_provider_by_label(agent_config.provider_label)
+    if provider is None:
+        raise ValueError(
+            f"The LLM provider '{agent_config.provider_label}' is not configured."
+        )
 
-agent_configs = config[PROVIDER]
+    params: dict[str, Any] = {
+        "model": resolve_litellm_model(provider.type, agent_config.llm_model),
+        "api_key": provider.api_key,
+    }
+    if agent_config.temperature is not None:
+        params["temperature"] = agent_config.temperature
+    if agent_config.max_tokens is not None:
+        params["max_tokens"] = agent_config.max_tokens
+    return params
 
-root_model = LiteLlm(model=agent_configs["root"]["model"], api_key=API_KEY)
-expert_model = LiteLlm(model=agent_configs["expert"]["model"], api_key=API_KEY)
-illustrator_model = LiteLlm(
-    model=agent_configs["illustrator"]["model"], api_key=API_KEY
-)
 
-coder_model_name = agent_configs["coder"]["model"]
+def build_adk_model(agent_config: AgentConfig) -> LiteLlm:
+    return LiteLlm(**get_litellm_params(agent_config))
+
+
+def get_default_profile() -> ProfileConfig:
+    """Profile named by OPTICHAT_PROFILE, or else the first fully configured one."""
+    label = os.getenv(PROFILE_ENV_VAR)
+    if label:
+        profile = get_llm_profile_by_label(label)
+        if profile is None:
+            raise ValueError(f"The LLM profile '{label}' was not found.")
+    else:
+        profile = next((p for p in get_llm_profiles() if p.enabled), None)
+        if profile is None:
+            raise ValueError(
+                "No fully configured LLM profile found. "
+                "Create one in the OptiChat settings."
+            )
+
+    if not profile.enabled:
+        raise ValueError(f"The LLM profile '{profile.label}' is not fully configured.")
+    return profile

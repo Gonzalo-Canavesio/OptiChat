@@ -10,6 +10,10 @@ cleanup() {
 # Trap SIGINT (Ctrl+C) and call cleanup
 trap cleanup SIGINT
 
+# ADK puts the agents dir (optichat/) on sys.path, not its parent, so the
+# repo root must be added for `import optichat...` to resolve.
+export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)${PYTHONPATH:+:$PYTHONPATH}"
+
 # Start ADK API Server in background
 echo "Starting ADK API Server..."
 uv run adk api_server optichat &
