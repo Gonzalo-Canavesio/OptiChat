@@ -64,8 +64,6 @@ show_results.ipynb
 quick_test.ipynb
 tmp/
 
-# Ignore kb
-chroma_langchain_db/
 /converted_models/
 /test_configs/converted_testset/
 

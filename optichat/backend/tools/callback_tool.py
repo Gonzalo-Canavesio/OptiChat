@@ -17,8 +17,7 @@ from optichat.backend.config.constants import (IS_SESSION_INITIALIZED, PERSISTEN
                                        CFG, EXPERT_AGENT_USES, EXPERT_AGENT_MAX_USES, EXPERT_AGENT_START_TIME,
                                        MODELS_DICTIONARY, MODEL_VERSIONS, HISTORICAL_MODELS_METADATA,
                                        IS_MODELS_DICTIONARY_AVAILABLE,
-                                       IS_MODELS_CODE_AVAILABLE, IS_MODELS_PAPER_AVAILABLE,
-                                       SYNTHETIC_PAPER_GENERATED, NEED_SYNTHETIC_PAPER,
+                                       NEED_SYNTHETIC_PAPER,
                                        MODEL_FOR_PAPER_GENERATION, USER_QUERY,
                                        CURRENT_SELECTED_MODEL, CURRENT_SELECTED_MODEL_INFO,
                                        ANALYSIS_PROMPT_CONTENT,
@@ -29,7 +28,6 @@ from optichat.backend.config.constants import (IS_SESSION_INITIALIZED, PERSISTEN
                                        OUTPUT_KEY_EXPERT_AGENT, OUTPUT_KEY_ROOT_AGENT)
 from optichat.backend.tools import timing_tracker
 from optichat.backend.tools.extract_tool import restore_model_object, save_model_object, extract_model_info, _solve_model
-from optichat.backend.tools.rag_tool import init_paper_rag, init_code_rag
 from optichat.backend.tools.metadata_store import (load_metadata, save_metadata, save_model_data,
                                            add_model_to_metadata)
 from optichat.backend.agents.expert.prompt import get_expert_agent_prompt
@@ -200,15 +198,8 @@ def initialize_session(callback_context: CallbackContext):
                 current_model_versions, historical_metadata, callback_context.state
             )
 
-        # Initialize code RAG if provided
-        is_models_code_available = _init_models_code(cfg)
-        callback_context.state[IS_MODELS_CODE_AVAILABLE] = is_models_code_available
-
-        # Check if models_paper is provided
-        is_models_paper_available = _init_models_paper(cfg)
-
         # If no models_paper provided, check if we need to generate synthetic description
-        if not is_models_paper_available and is_model_dictionary_available:
+        if "models_paper" not in cfg and is_model_dictionary_available:
             # Get model name from actual loaded version (not config)
             # This ensures we use the version name extracted from the pickle file
             model_name = current_model_versions[0] if current_model_versions else cfg.get("model_name", "model")
@@ -219,14 +210,6 @@ def initialize_session(callback_context: CallbackContext):
 
             if cached_paper_path and os.path.exists(cached_paper_path):
                 logger.info(f"Using cached synthetic paper: {cached_paper_path}")
-                # Load existing synthetic paper
-                try:
-                    init_paper_rag([cached_paper_path], model_name)
-                    is_models_paper_available = True
-                    callback_context.state[SYNTHETIC_PAPER_GENERATED] = True
-                    logger.info("✓ Cached synthetic paper loaded for paper_rag queries")
-                except Exception as e:
-                    logger.error(f"Failed to load cached synthetic paper: {e}")
             else:
                 # No cached paper - set flag for root agent to generate it
                 # Only if we actually have a current model to generate for
@@ -234,18 +217,6 @@ def initialize_session(callback_context: CallbackContext):
                     logger.info(f"No synthetic paper for {model_name}. Flagging for generation...")
                     callback_context.state[NEED_SYNTHETIC_PAPER] = True
                     callback_context.state[MODEL_FOR_PAPER_GENERATION] = model_name
-                # is_models_paper_available stays False until generation completes
-
-        callback_context.state[IS_MODELS_PAPER_AVAILABLE] = is_models_paper_available
-
-        # Add note to prompt if synthetic paper was generated
-        if callback_context.state.get(SYNTHETIC_PAPER_GENERATED, False):
-            callback_context.state["SYNTHETIC_PAPER_NOTE"] = (
-                "Note: A comprehensive model description was automatically generated "
-                "during initialization since no research paper was provided."
-            )
-        else:
-            callback_context.state["SYNTHETIC_PAPER_NOTE"] = ""
 
         callback_context.state[IS_SESSION_INITIALIZED] = True
 
@@ -491,31 +462,6 @@ def _init_models(cfg: dict):
     return models_dictionary, current_model_versions, historical_metadata
 
 
-def _init_models_code(cfg: dict):
-    if "models_code" in cfg:
-        paths = cfg["models_code"].get("local_resources", [])
-        model_name = cfg.get("model_name", "default_model")
-        # TODO: temporary solution to use GenericLoader in rag_tool.py, which only supports one path
-        init_code_rag(paths[0], model_name)
-        is_models_code_available = True
-    else:
-        logger.debug("No 'models_code' in cfg")
-        is_models_code_available = False
-    return is_models_code_available
-
-
-def _init_models_paper(cfg: dict):
-    if "models_paper" in cfg:
-        paths = cfg["models_paper"].get("local_resources", [])
-        model_name = cfg.get("model_name", "default_model")
-        init_paper_rag(paths, model_name)
-        is_models_paper_available = True
-    else:
-        logger.debug("No 'models_paper' in cfg")
-        is_models_paper_available = False
-    return is_models_paper_available
-
-
 def _read_models_code_files(cfg: dict) -> Optional[str]:
     """
     Read and concatenate source code from models_code paths in config.
@@ -573,16 +519,8 @@ def _init_cfg(cfg: dict):
         if section_key in required_sections:
             local_resources = section_cfg.get("local_resources", [])
             allowed_extensions = extension_filters.get(section_key, None)
-            # TODO: temporary solution to use init_code_rag() in rag_tool.py
-            if section_key == "models_code":
-                logger.warning(("For 'models_code', ONLY one path is supported for now, "
-                    "which must be a .py file or a wildcard path to indicate a folder. "
-                    "No expand_resources() is performed for 'models_code' in cfg."))
-                assert len(local_resources) == 1, "ONLY one path for models_code is supported for now."
-                assert local_resources[0].endswith(".py") or local_resources[0].endswith("*"), "models_code path must be a .py file or a wildcard path."
-            else:
-                expanded_resources = _expand_resources(local_resources, allowed_extensions)
-                cfg_out[section_key]["local_resources"] = expanded_resources
+            expanded_resources = _expand_resources(local_resources, allowed_extensions)
+            cfg_out[section_key]["local_resources"] = expanded_resources
     return cfg_out
 
 
@@ -1424,19 +1362,9 @@ def handle_illustrator_response(tool: BaseTool,
         # Cache path in metadata
         save_synthetic_paper_path(model_name, paper_path)
 
-        # Initialize paper_rag with the synthetic paper
-        init_paper_rag([paper_path], model_name)
-
-        # Update state flags
         tool_context.state[NEED_SYNTHETIC_PAPER] = False
-        tool_context.state[SYNTHETIC_PAPER_GENERATED] = True
-        tool_context.state[IS_MODELS_PAPER_AVAILABLE] = True
-        tool_context.state["SYNTHETIC_PAPER_NOTE"] = (
-            "Note: A comprehensive model description was automatically generated "
-            "during initialization since no research paper was provided."
-        )
 
-        logger.info("[ILLUSTRATOR_CALLBACK] ✓ Synthetic paper saved and initialized successfully")
+        logger.info("[ILLUSTRATOR_CALLBACK] ✓ Synthetic paper saved successfully")
 
     except Exception as e:
         logger.error(f"[ILLUSTRATOR_CALLBACK] Failed to process illustrator response: {e}")
