@@ -49,7 +49,29 @@ def get_solver_pyomo_name() -> str:
     return SOLVERS[get_active_solver()][0]
 
 
-def make_solver(time_limit: float | None = None):
+class _Solver:
+    """Pyomo solver that reports a missing solution instead of raising.
+
+    Pyomo loads the solution into the model by default. When there is none (e.g. an
+    infeasible model) Gurobi only warns, but the APPSI solvers (HiGHS) raise. Solving
+    with load_solutions=False and loading afterwards, only if a solution exists,
+    makes every solver return its termination condition the same way.
+    """
+
+    def __init__(self, solver):
+        self._solver = solver
+
+    def __getattr__(self, name):
+        return getattr(self._solver, name)
+
+    def solve(self, model, load_solutions: bool = True, **kwargs):
+        results = self._solver.solve(model, load_solutions=False, **kwargs)
+        if load_solutions and len(results.solution) > 0:
+            model.solutions.load_from(results)
+        return results
+
+
+def make_solver(time_limit: float | None = None) -> _Solver:
     """Pyomo solver object for the active solver, or SolverNotAvailableError."""
     active = get_active_solver()
     pyomo_name, time_limit_option = SOLVERS[active]
@@ -61,4 +83,4 @@ def make_solver(time_limit: float | None = None):
         )
     if time_limit is not None:
         solver.options[time_limit_option] = time_limit
-    return solver
+    return _Solver(solver)

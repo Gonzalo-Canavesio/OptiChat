@@ -106,6 +106,58 @@ def run_gurobi_cli_iis(lp_path: str, workdir: Optional[str] = None) -> Optional[
         return None
 
 
+HIGHS_PYOMO_NAME = "appsi_highs"
+# Row labels written by Pyomo's LP writer: c_[elu]_<name>_ or r_[lu]_<name>_ (ranged)
+_LP_ROW_LABEL = re.compile(r"^(\s*)[cr]_[elu]_(.+)_:")
+_LP_SECTIONS = {"min": "Minimize", "max": "Maximize", "st": "Subject To",
+                "bounds": "Bounds", "end": "End"}
+
+
+def run_highs_iis(lp_path: str, workdir: Optional[str] = None) -> Optional[str]:
+    """
+    Brief: Compute an irreducible IIS with HiGHS from an LP written with symbolic names.
+
+    Operations:
+      1) Read the LP into HiGHS, solve it and ask for an IIS (strategy FromLp | Irreducible;
+         the default strategy only detects trivial conflicts)
+      2) Write the IIS model and rewrite it like Gurobi's .ilp: 'Subject To' sections and
+         Pyomo constraint names (c_u_max_cal_ -> max_cal), so iis2json reads it unchanged
+    Returns:
+      Path to the .ilp file, or None if HiGHS is not installed or finds no IIS
+    """
+    try:
+        import highspy
+    except ImportError:
+        return None
+    wd = workdir or os.path.dirname(os.path.abspath(lp_path)) or "."
+    base, _ = os.path.splitext(os.path.basename(lp_path))
+    raw_path = os.path.join(wd, f"{base}_highs_iis.lp")
+    ilp_path = os.path.join(wd, f"{base}.ilp")
+    try:
+        h = highspy.Highs()
+        h.setOptionValue("output_flag", False)
+        strategy = int(highspy.IisStrategy.kIisStrategyFromLp) | int(highspy.IisStrategy.kIisStrategyIrreducible)
+        if (h.readModel(lp_path) != highspy.HighsStatus.kOk
+                or h.setOptionValue("iis_strategy", strategy) != highspy.HighsStatus.kOk):
+            return None
+        h.run()
+        status, iis = h.getIis()
+        if status != highspy.HighsStatus.kOk or not len(iis.row_index_):
+            return None
+        if h.writeIisModel(raw_path) != highspy.HighsStatus.kOk:
+            return None
+        lines = []
+        for line in open(raw_path, "r", encoding="utf-8").read().splitlines():
+            section = _LP_SECTIONS.get(line.strip().lower())
+            lines.append(section if section else _LP_ROW_LABEL.sub(r"\1\2:", line))
+        with open(ilp_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        return ilp_path
+    except Exception as e:
+        logger.warning(f"HiGHS IIS failed: {e}")
+        return None
+
+
 def iis2json(lp_like_path: str) -> Dict[str, List[str]]:
     """
     Extract the constraint names between 'Subject To' section and the next section.
@@ -277,6 +329,8 @@ def infeasibility_diagnosis(
         lp_path = os.path.join(td, "model_r1.lp")
         write_lp_with_symbolic_names(model, lp_path)
         iis_path = run_gurobi_cli_iis(lp_path, workdir=td)
+        if not iis_path and solver_name == HIGHS_PYOMO_NAME:
+            iis_path = run_highs_iis(lp_path, workdir=td)
         
         if not iis_path:
              try:
@@ -416,6 +470,8 @@ def infeasibility_diagnosis(
         lp_path_r2 = os.path.join(td_r2, "model_r2.lp")
         write_lp_with_symbolic_names(model_r1, lp_path_r2)
         iis_path_r2 = run_gurobi_cli_iis(lp_path_r2, workdir=td_r2)
+        if not iis_path_r2 and solver_name == HIGHS_PYOMO_NAME:
+            iis_path_r2 = run_highs_iis(lp_path_r2, workdir=td_r2)
         
         if not iis_path_r2:
              try:
