@@ -23,10 +23,18 @@ class ChatMessage(TypedDict):
     thought: NotRequired[str | None]
 
 
+class LoadedModel(TypedDict):
+    name: str
+    status: str
+    objective: NotRequired[float | None]
+    sense: NotRequired[str | None]
+
+
 class ChatInfo(TypedDict):
     id: str
     name: str
     messages: NotRequired[list[ChatMessage]]
+    models: NotRequired[list[LoadedModel]]
 
 
 class SessionStateManager:

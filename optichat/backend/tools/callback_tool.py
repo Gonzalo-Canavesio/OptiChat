@@ -13,6 +13,7 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools.tool_context import ToolContext
 from google.adk.tools.base_tool import BaseTool
 from google.adk.models import LlmResponse, LlmRequest
+from optichat.backend.config import workspace
 from optichat.backend.config.constants import (IS_SESSION_INITIALIZED, PERSISTENT_STATES, TEMPORARY_STATES,
                                        CFG, EXPERT_AGENT_USES, EXPERT_AGENT_MAX_USES, EXPERT_AGENT_START_TIME,
                                        MODELS_DICTIONARY, MODEL_VERSIONS, HISTORICAL_MODELS_METADATA,
@@ -253,15 +254,15 @@ def _find_and_copy_source_file(version_name: str, cfg: dict) -> Optional[str]:
     
     Strategy:
     1. Check models_code paths in config for {version}.py
-    2. If found, copy to tmp/model_objects/{version}.py
-    3. Return the tmp path
+    2. If found, copy to <workspace>/model_objects/{version}.py
+    3. Return the copied path
     
     Args:
         version_name: Model version name (e.g., 'RTN_inf_1')
         cfg: Configuration dictionary
     
     Returns:
-        Path to copied .py file in tmp, or None if not found
+        Path to the copied .py file, or None if not found
     """
     import shutil
     
@@ -291,19 +292,15 @@ def _find_and_copy_source_file(version_name: str, cfg: dict) -> Optional[str]:
         logger.warning(f"No .py source file found for {version_name}")
         return None
     
-    # Copy to tmp/model_objects
-    tmp_dir = os.path.join(os.getcwd(), "tmp/model_objects")
-    os.makedirs(tmp_dir, exist_ok=True)
-    
-    # Create tmp/inf_detail directory for infeasibility diagnosis reports
-    inf_detail_dir = os.path.join(os.getcwd(), "tmp/inf_detail")
-    os.makedirs(inf_detail_dir, exist_ok=True)
+    # Copy to <workspace>/model_objects
+    model_dir = workspace.model_objects_dir()
+    os.makedirs(model_dir, exist_ok=True)
 
-    # Create tmp/robust directory for robustness analysis outputs
-    robust_dir = os.path.join(os.getcwd(), "tmp/robust")
-    os.makedirs(robust_dir, exist_ok=True)
-    
-    dest_path = os.path.join(tmp_dir, f"{version_name}.py")
+    # Directories for infeasibility diagnosis reports and robustness analysis outputs
+    os.makedirs(workspace.inf_detail_dir(), exist_ok=True)
+    os.makedirs(workspace.robust_dir(), exist_ok=True)
+
+    dest_path = os.path.join(model_dir, f"{version_name}.py")
     
     try:
         shutil.copy2(source_file, dest_path)
@@ -593,6 +590,23 @@ def check_llm_request(callback_context: CallbackContext, llm_request: LlmRequest
     # Start timing for LLM call
     callback_context.state[LLM_CALL_START_TIME] = time.time()
 
+    # The session-initialization config upload (application/json) is persisted with
+    # the session history; it must never be replayed to the LLM as a file attachment.
+    kept_contents = []
+    for content in llm_request.contents:
+        content.parts = [
+            part for part in (content.parts or [])
+            if not (part.inline_data and part.inline_data.mime_type == "application/json")
+        ]
+        if content.parts:
+            kept_contents.append(content)
+    llm_request.contents = kept_contents
+    if not kept_contents and not callback_context.state.get(NEED_SYNTHETIC_PAPER, False):
+        # Nothing but the config upload: initialization only, no reply to generate.
+        # (When the model still needs its description, the root agent's first LLM
+        # call generates it, so that call must go through.)
+        return LlmResponse()
+
     original_instruction = llm_request.config.system_instruction or types.Content(role="system", parts=[])
     # Ensure system_instruction is Content and parts list exists
     if not isinstance(original_instruction, types.Content):
@@ -773,7 +787,7 @@ def _get_component_index_for_prompt(state: dict) -> Optional[str]:
 
     Priority:
     1. Cache (state key COMPONENT_INDEX_{base_model})
-    2. Generated paper file at tmp/model_objects/generated_papers/{base_model}_description.md
+    2. Generated paper file at <workspace>/model_objects/generated_papers/{base_model}_description.md
     3. Fall back to _generate_component_index (programmatic summary)
     """
     # Prefer the state-tracked selection (primary = first); fall back to query-text extraction
@@ -790,7 +804,7 @@ def _get_component_index_for_prompt(state: dict) -> Optional[str]:
     if not base_model:
         # models_dictionary may not be loaded yet (e.g. frontend model selection before init).
         # Scan the papers directory to find an available description file.
-        papers_dir = os.path.join(os.getcwd(), "tmp", "model_objects", "generated_papers")
+        papers_dir = str(workspace.generated_papers_dir())
         paper_files = sorted(glob.glob(os.path.join(papers_dir, "*_description.md")))
         if paper_files:
             # Pick the most recently modified paper
@@ -809,8 +823,7 @@ def _get_component_index_for_prompt(state: dict) -> Optional[str]:
         return state[cache_key]
 
     # 2. Try generated paper file
-    paper_path = os.path.join(os.getcwd(), "tmp", "model_objects", "generated_papers",
-                              f"{base_model}_description.md")
+    paper_path = os.path.join(workspace.generated_papers_dir(), f"{base_model}_description.md")
     if os.path.exists(paper_path):
         try:
             with open(paper_path, "r", encoding="utf-8") as f:
@@ -924,7 +937,7 @@ def _extract_base_model_from_query(user_query: str, models_dictionary: dict) -> 
 
 def _load_infeasibility_diagnosis_report(model_name: str) -> Optional[dict]:
     """
-    Load infeasibility diagnosis report from tmp/inf_detail/{model_name}_inf_detail.json.
+    Load infeasibility diagnosis report from <workspace>/inf_detail/{model_name}_inf_detail.json.
 
     Args:
         model_name: Base model name (e.g., 'diet_inf_1', 'aircraft_inf_1')
@@ -932,7 +945,7 @@ def _load_infeasibility_diagnosis_report(model_name: str) -> Optional[dict]:
     Returns:
         Dictionary with diagnosis data, or None if file doesn't exist
     """
-    report_path = os.path.join(os.getcwd(), "tmp/inf_detail", f"{model_name}_inf_detail.json")
+    report_path = os.path.join(workspace.inf_detail_dir(), f"{model_name}_inf_detail.json")
 
     if not os.path.exists(report_path):
         logger.warning(f"No diagnosis report found at: {report_path}")
@@ -1300,7 +1313,7 @@ def check_root_agent_runtime(callback_context: CallbackContext):
 
     # Optionally save to file
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    output_dir = "tmp/timing"
+    output_dir = str(workspace.timing_dir())
     os.makedirs(output_dir, exist_ok=True)
     timing_file = os.path.join(output_dir, f"timing_{timestamp}.json")
     timing_tracker.save_to_file(timing_file)

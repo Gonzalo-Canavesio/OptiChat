@@ -1,6 +1,7 @@
 from loguru import logger
 import pyomo.environ as pe
-from pyomo.opt import SolverFactory, SolverStatus, TerminationCondition
+from pyomo.opt import SolverStatus, TerminationCondition
+from optichat.backend.config.solver import make_solver
 from optichat.backend.tools.extract_tool import extract_model_info, restore_model_object, save_model_object, unique_component_name
 from optichat.backend.tools.metadata_store import (load_metadata, save_metadata, save_model_data,
                                            add_model_to_metadata)
@@ -112,8 +113,7 @@ def solve_model(model: pe.ConcreteModel, version: str, models_dictionary: dict, 
 
     time_limit_seconds = 180
     print(f"Solving model with time limit of {time_limit_seconds} seconds...")
-    solver = SolverFactory('gurobi')
-    solver.options['TimeLimit'] = time_limit_seconds
+    solver = make_solver(time_limit=time_limit_seconds)
     results = solver.solve(model, tee=False)
     info = extract_model_info(model, results.solver.termination_condition)
 

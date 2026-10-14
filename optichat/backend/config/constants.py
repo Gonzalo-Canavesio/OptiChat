@@ -50,11 +50,6 @@ LLM_CALL_START_TIME = "LLM_CALL_START_TIME"
 
 CFG = "CFG"
 
-TMP_ROOT_FOLDER = "tmp"
-TMP_MODEL_OBJECT_FOLDER = "tmp/model_objects"
-TMP_MODEL_DATA_FOLDER = "tmp/model_objects/data"
-TMP_ROBUST_FOLDER = "tmp/robust"
-METADATA_FILE_PATH = "tmp/model_objects/metadata.json"
 
 
 # NOT reset within a session

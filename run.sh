@@ -10,22 +10,25 @@ cleanup() {
 # Trap SIGINT (Ctrl+C) and call cleanup
 trap cleanup SIGINT
 
-# ADK puts the agents dir (optichat/) on sys.path, not its parent, so the
-# repo root must be added for `import optichat...` to resolve.
+# The repo root must be importable so `import optichat...` resolves.
 export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)${PYTHONPATH:+:$PYTHONPATH}"
 
-# Start ADK API Server in background
-echo "Starting ADK API Server..."
-uv run adk api_server optichat &
-ADK_PID=$!
+# Start the chat API (ADK agents + SQLite persistence) in background
+echo "Starting OptiChat API..."
+uv run uvicorn optichat.backend.api:app --port 8000 &
+API_PID=$!
 
-# Wait for API server to be ready (simple sleep for now, could be more robust)
-echo "Waiting for API Server to initialize..."
-sleep 5
+# Wait until the API answers (up to 60s)
+echo "Waiting for the API to initialize..."
+for _ in $(seq 1 60); do
+    curl -sf http://localhost:8000/chats >/dev/null && break
+    kill -0 $API_PID 2>/dev/null || { echo "The API failed to start."; exit 1; }
+    sleep 1
+done
 
 # Start Streamlit App
 echo "Starting Streamlit App..."
-uv run streamlit run app.py
+uv run streamlit run optichat/frontend/app.py
 
 # Wait for background processes
-wait $ADK_PID
+wait $API_PID

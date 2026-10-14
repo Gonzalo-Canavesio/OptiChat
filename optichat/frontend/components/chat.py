@@ -3,9 +3,11 @@ from typing import Literal
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-from optichat.frontend.api.client import create_chat, send_message
+from optichat.frontend.api.client import BackendError, create_chat, send_message
 from optichat.frontend.state import (
+    ChatInfo,
     ChatMessage,
+    LoadedModel,
     clean_session_state_for_chat_form,
     state,
 )
@@ -35,19 +37,19 @@ def _handle_create_chat_submission(
         st.error("Please upload a .py model file.")
         return False
 
-    with st.spinner("Initializing model and starting chat..."):
-        chat = create_chat(
-            model_files=model_files,
-            data_files=data_files,
-            model_paper=model_paper,
-            modeling_language=modeling_language,
-            profile_label=profile.label,
-            solver=solver,
-            chat_name=chat_name.strip(),
-        )
-
-    if chat is None:
-        st.error("Failed to create chat. Please check your backend connection.")
+    try:
+        with st.spinner("Initializing model and starting chat..."):
+            chat = create_chat(
+                model_files=model_files,
+                data_files=data_files,
+                model_paper=model_paper,
+                modeling_language=modeling_language,
+                profile_label=profile.label,
+                solver=solver,
+                chat_name=chat_name.strip(),
+            )
+    except BackendError as e:
+        st.error(f"Failed to create chat: {e}")
         return False
 
     state.current_chat = chat
@@ -131,12 +133,43 @@ def _render_chat_message(message: ChatMessage) -> None:
         st.markdown(message["content"])
 
 
+def _describe_model(model: LoadedModel) -> str:
+    status = model["status"]
+    if status == "optimal" and model.get("objective") is not None:
+        sense = (model.get("sense") or "").lower()
+        return (
+            f"- **{model['name']}** loaded and solved to optimality "
+            f"({sense + ' ' if sense else ''}objective = {model['objective']:,.6g})"
+        )
+    return f"- **{model['name']}** loaded, but its status is *{status}*"
+
+
+def _render_chat_header(chat: ChatInfo) -> None:
+    st.subheader(chat["name"])
+
+
+def _render_welcome(chat: ChatInfo) -> None:
+    models = chat.get("models") or []
+    lines = [_describe_model(m) for m in models] or ["- No model information."]
+    infeasible = any(m["status"].startswith("infeasible") for m in models)
+    hint = (
+        "The model is infeasible: ask why, or how to restore feasibility."
+        if infeasible
+        else "Ask about its values, sensitivity, what-if scenarios or robustness."
+    )
+    with st.chat_message("assistant"):
+        st.markdown("The model is ready.\n\n" + "\n".join(lines) + f"\n\n{hint}")
+
+
 def render_active_chat() -> None:
     chat = state.current_chat
     if not chat:
         return
 
+    _render_chat_header(chat)
     messages = chat.get("messages", [])
+    if not messages:
+        _render_welcome(chat)
 
     for msg in messages:
         _render_chat_message(msg)
@@ -152,16 +185,16 @@ def render_active_chat() -> None:
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        with st.spinner("Thinking..."):
-            new_chat = send_message(
-                chat_id=chat["id"],
-                message=prompt,
-                profile_label=state.selected_profile.label,
-                solver=state.selected_solver,
-            )
-
-        if new_chat is None:
-            st.error("Failed to send message. Please check your backend connection.")
+        try:
+            with st.spinner("Thinking..."):
+                new_chat = send_message(
+                    chat_id=chat["id"],
+                    message=prompt,
+                    profile_label=state.selected_profile.label,
+                    solver=state.selected_solver,
+                )
+        except BackendError as e:
+            st.error(f"Failed to send message: {e}")
             return
 
         state.current_chat = new_chat

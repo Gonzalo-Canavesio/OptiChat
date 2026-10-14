@@ -1,3 +1,4 @@
+from optichat.backend.config import workspace
 from optichat.backend.config.code_instruction_grammar import get_grammar_reference
 from optichat.backend.tools.extract_tool import auto_extract_function_docs
 
@@ -232,7 +233,7 @@ def get_expert_agent_prompt(prompt_version=1, analysis_type="RETRIEVAL", diagnos
         prompt = prompt.replace("{DIAGNOSIS_REPORT}", "(No prior diagnosis report available)")
 
     if cached_model_name:
-        diagnosis_status = f"✓ Diagnosis already performed for: {cached_model_name}\n   ✓ Results cached in: tmp/inf_detail/{cached_model_name}_inf_detail.json\n   ✓ Diagnosis details provided in DIAGNOSIS REPORT section above"
+        diagnosis_status = f"✓ Diagnosis already performed for: {cached_model_name}\n   ✓ Results cached in: {workspace.inf_detail_dir() / (cached_model_name + "_inf_detail.json")}\n   ✓ Diagnosis details provided in DIAGNOSIS REPORT section above"
         prompt = prompt.replace("{DIAGNOSIS_STATUS}", diagnosis_status)
         prompt = prompt.replace("{CACHED_MODEL_NAME}", cached_model_name)
     else:

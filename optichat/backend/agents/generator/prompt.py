@@ -40,7 +40,7 @@ SOLVE_MODEL SIGNATURE
   solve_model(model, version_name, models_dictionary, tool_context, description)
   - description: 50-100 words (use the DESCRIPTION field from the instruction verbatim)
 
-SOLVER: ALWAYS gurobi — NEVER use glpk, cbc, or any other solver under any circumstances.
+SOLVER: __SOLVER_PLACEHOLDER__
 
 PRE-INJECTED NAMES (DO NOT import — just use directly)
   pyo, value, Constraint, ConstraintList, Var, Param, Objective, ConcreteModel, Set, Expression
@@ -115,4 +115,10 @@ def get_coder_prompt(model_source_code: str = None) -> str:
     source_code = model_source_code if model_source_code else "(No source code available)"
     prompt = _CODER_PROMPT_TEMPLATE.replace("__SHORTCUT_FUNCTIONS_PLACEHOLDER__", shortcut_docs)
     prompt = prompt.replace("__SOURCE_CODE_PLACEHOLDER__", source_code)
+    from optichat.backend.config.solver import get_active_solver
+    prompt = prompt.replace(
+        "__SOLVER_PLACEHOLDER__",
+        f"the selected solver is {get_active_solver()}. Always solve through "
+        "solve_model / modify_and_solve and NEVER create or choose a solver yourself.",
+    )
     return prompt

@@ -63,6 +63,7 @@ ParamLike = Union["Param", "ParamData"]
 
 # Use your existing generator
 from optichat.backend.tools.robust_analysis.scenario_generator import generate_scenarios_from_model
+from optichat.backend.config.solver import get_solver_pyomo_name
 
 __all__ = ["run_robustness"]
 
@@ -93,7 +94,7 @@ def _collect_var_values(model: pyo.ConcreteModel) -> Dict[str, Dict[Any, float]]
 
 def _solve_once(
     model: pyo.ConcreteModel,
-    solver: str = "gurobi",
+    solver: Optional[str] = None,
     solver_options: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Dict[Any, float]]:
     """
@@ -107,6 +108,7 @@ def _solve_once(
     RuntimeError
         If no supported LP/MIP solver is available.
     """
+    solver = solver or get_solver_pyomo_name()
     sf = pyo.SolverFactory(solver)
     if not sf.available():
         for cand in ("cbc", "glpk", "highs"):
@@ -430,7 +432,7 @@ def run_robustness(
     seed: Optional[int] = None,
     out_path: Optional[str] = "robust_results.csv",
     tol: float = 1e-6,
-    solver: str = "gurobi",
+    solver: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Solve once, evaluate across sampled scenarios (Option B: scalar & indexed Params).

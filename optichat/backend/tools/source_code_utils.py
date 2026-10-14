@@ -11,6 +11,7 @@ import ast
 import os
 from typing import Optional, Dict, Any
 from loguru import logger
+from optichat.backend.config import workspace
 
 
 def extract_constraint_source(source_code: str) -> str:
@@ -118,7 +119,7 @@ def get_source_code_for_model(
     """
     Retrieve the .py source code for a model version.
     
-    For base models: Read from tmp/model_objects/{version}.py
+    For base models: Read from <workspace>/model_objects/{version}.py
     For modified models: Read base model's .py file (recursively)
     
     Args:
@@ -141,8 +142,8 @@ def get_source_code_for_model(
     source_path = model_info.get("source_file_path")
     
     if not source_path or not os.path.exists(source_path):
-        # Fallback: try tmp/model_objects/{version}.py
-        source_path = os.path.join("tmp/model_objects", f"{version_name}.py")
+        # Fallback: try <workspace>/model_objects/{version}.py
+        source_path = os.path.join(workspace.model_objects_dir(), f"{version_name}.py")
         if not os.path.exists(source_path):
             logger.warning(f"No source file found for {version_name}")
             return None
@@ -249,7 +250,7 @@ and account for the previous modifications listed.
         return f"""
 ===== MODEL CONSTRAINT DEFINITIONS: {version_name} =====
 Pickle file: {pkl_path}
-Source file: tmp/model_objects/{version_name}.py
+Source file: {os.path.join(workspace.model_objects_dir(), version_name + ".py")}
 
 These are the constraint definitions extracted from the model source.
 When writing modification code in python_repl_func:

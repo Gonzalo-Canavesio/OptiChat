@@ -1,5 +1,5 @@
 import pyomo.environ as pyo
-from pyomo.opt import SolverFactory
+from optichat.backend.config.solver import make_solver
 import logging
 
 # Configure logging
@@ -11,7 +11,7 @@ class ElasticInfeasibilityDiagnoser:
         self.original_constraints = {}
         self.elastic_slacks = {} # Map (constraint_name, index) -> slack_var
         self.elastic_constraints = {} # Map (constraint_name, index, type) -> constraint_data
-        self.solver = SolverFactory('gurobi')
+        self.solver = make_solver()
 
     def elasticize_model(self):
         """

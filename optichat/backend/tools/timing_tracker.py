@@ -12,6 +12,9 @@ This shows the TRUE COST of each tool call including the LLM time to decide to u
 
 import time
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Dict, Any, Optional, List
 from loguru import logger
 from datetime import datetime
@@ -252,23 +255,41 @@ class TimingTracker:
         return self.timings
 
 
-# Global tracker instance
-_global_tracker: Optional[TimingTracker] = None
+# The tracker lives in a one-element list stored in a ContextVar. Each agent run gets
+# its own list (`use_tracker`); tools running in worker threads see a copy of the
+# context that still points to the same list, so a reset made there is not lost.
+_tracker_holder: ContextVar[list | None] = ContextVar("optichat_timing_tracker", default=None)
+_default_holder: list = []  # used outside the chat API (adk web, evals)
+
+
+@contextmanager
+def use_tracker() -> Iterator[None]:
+    """Give the enclosed agent run a timing tracker of its own."""
+    token = _tracker_holder.set([])
+    try:
+        yield
+    finally:
+        _tracker_holder.reset(token)
+
+
+def _holder() -> list:
+    holder = _tracker_holder.get()
+    return _default_holder if holder is None else holder
 
 
 def get_tracker() -> TimingTracker:
-    """Get or create the global timing tracker."""
-    global _global_tracker
-    if _global_tracker is None:
-        _global_tracker = TimingTracker()
-    return _global_tracker
+    """Get or create the timing tracker of the current run."""
+    holder = _holder()
+    if not holder:
+        holder.append(TimingTracker())
+    return holder[0]
 
 
 def reset_tracker():
-    """Reset the global timing tracker."""
-    global _global_tracker
-    _global_tracker = TimingTracker()
-    _global_tracker.start_query()
+    """Start a fresh tracker for the current run."""
+    tracker = TimingTracker()
+    tracker.start_query()
+    _holder()[:] = [tracker]
 
 
 # Convenience functions

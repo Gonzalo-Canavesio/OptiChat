@@ -1,9 +1,10 @@
 import pyomo.environ as pe
-from pyomo.opt import SolverFactory, SolverStatus, TerminationCondition
+from pyomo.opt import SolverStatus, TerminationCondition
+from optichat.backend.config.solver import make_solver
 from pyomo.core.expr.visitor import identify_mutable_parameters, identify_variables
 import cloudpickle
 import os
-from optichat.backend.config.constants import TMP_MODEL_OBJECT_FOLDER
+from optichat.backend.config import workspace
 
 
 def extract_expressions_from_lp(lp_local_file_path: str):
@@ -266,7 +267,7 @@ def _solve_model(model, is_lp=False, is_solved=False):
         return model, TerminationCondition.optimal
     if is_lp and not hasattr(model, "dual"):
         model.dual = pe.Suffix(direction=pe.Suffix.IMPORT_EXPORT)
-    solver = SolverFactory('gurobi')
+    solver = make_solver()
     results = solver.solve(model, tee=False)
     termination_condition = results.solver.termination_condition
     return model, termination_condition
@@ -288,7 +289,7 @@ def save_model_object(model, file_name):
     use cloudpickle to save a Pyomo model object to a file.
     Note that file_name is without suffix .pkl
     """
-    folder_name = os.path.join(os.getcwd(), TMP_MODEL_OBJECT_FOLDER)
+    folder_name = str(workspace.model_objects_dir())
     os.makedirs(folder_name, exist_ok=True)
     local_path_to_object = os.path.join(folder_name, f"{file_name}.pkl")
 

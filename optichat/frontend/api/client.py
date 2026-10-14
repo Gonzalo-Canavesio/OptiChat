@@ -6,6 +6,29 @@ from optichat.frontend.state import ChatInfo
 API_BASE_URL = "http://localhost:8000"
 
 
+class BackendError(Exception):
+    """The backend rejected or failed a request; the message is meant for the user."""
+
+
+def _raise_for_error(response: requests.Response) -> None:
+    if response.ok:
+        return
+    try:
+        detail = response.json().get("detail")
+    except ValueError:
+        detail = None
+    raise BackendError(detail if isinstance(detail, str) else response.text[:300])
+
+
+def _request(method: str, path: str, **kwargs) -> dict | list:
+    try:
+        response = requests.request(method, f"{API_BASE_URL}{path}", **kwargs)
+    except requests.RequestException as e:
+        raise BackendError(f"Could not reach the backend at {API_BASE_URL}: {e}") from e
+    _raise_for_error(response)
+    return response.json()
+
+
 def fetch_chats() -> list[ChatInfo]:
     try:
         response = requests.get(f"{API_BASE_URL}/chats", timeout=10)
@@ -13,6 +36,13 @@ def fetch_chats() -> list[ChatInfo]:
         return response.json()
     except requests.RequestException:
         return []
+
+
+def fetch_chat(chat_id: str) -> ChatInfo | None:
+    try:
+        return _request("GET", f"/chats/{chat_id}", timeout=30)
+    except BackendError:
+        return None
 
 
 def create_chat(
@@ -23,7 +53,7 @@ def create_chat(
     profile_label: str,
     solver: str,
     chat_name: str = "",
-) -> ChatInfo | None:
+) -> ChatInfo:
     payload = {
         "profile_label": profile_label,
         "modeling_language": modeling_language,
@@ -49,35 +79,18 @@ def create_chat(
             ("model_paper", (model_paper.name, model_paper.getvalue(), content_type))
         )
 
-    try:
-        response = requests.post(
-            f"{API_BASE_URL}/chats",
-            data=payload,
-            files=files,
-            timeout=120,
-        )
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException:
-        return None
+    return _request("POST", "/chats", data=payload, files=files, timeout=900)
 
 
 def send_message(
     chat_id: str, message: str, profile_label: str, solver: str
-) -> ChatInfo | None:
+) -> ChatInfo:
     payload = {
         "message": message,
         "profile_label": profile_label,
         "solver": solver,
     }
 
-    try:
-        response = requests.post(
-            f"{API_BASE_URL}/chats/{chat_id}/messages",
-            json=payload,
-            timeout=1800,
-        )
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException:
-        return None
+    return _request(
+        "POST", f"/chats/{chat_id}/messages", json=payload, timeout=1800
+    )

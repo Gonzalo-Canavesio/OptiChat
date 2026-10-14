@@ -4,8 +4,8 @@ from typing import Dict
 from loguru import logger
 from google.adk.tools.tool_context import ToolContext
 
+from optichat.backend.config import workspace
 from optichat.backend.config.constants import (
-    TMP_MODEL_OBJECT_FOLDER,
     MODELS_DICTIONARY,
     MODEL_FOR_PAPER_GENERATION,
     CFG,
@@ -551,10 +551,10 @@ def save_synthetic_paper(description: str, model_name: str) -> str:
     Example:
         >>> path = save_synthetic_paper(description, "supply_chain")
         >>> print(path)
-        "/path/to/tmp/model_objects/generated_papers/supply_chain_description.md"
+        "/path/to/<workspace>/model_objects/generated_papers/supply_chain_description.md"
     """
     # Create generated_papers directory
-    papers_dir = os.path.join(TMP_MODEL_OBJECT_FOLDER, "generated_papers")
+    papers_dir = str(workspace.generated_papers_dir())
     os.makedirs(papers_dir, exist_ok=True)
 
     # Create filename

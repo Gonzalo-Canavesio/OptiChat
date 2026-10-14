@@ -6,14 +6,10 @@ from typing import Dict, Any, Optional
 from loguru import logger
 
 # Import constants
-from optichat.backend.config.constants import (
-    METADATA_FILE_PATH,
-    TMP_MODEL_DATA_FOLDER,
-    TMP_MODEL_OBJECT_FOLDER
-)
+from optichat.backend.config import workspace
 
 
-def load_metadata(metadata_path: str = METADATA_FILE_PATH) -> Dict[str, Any]:
+def load_metadata(metadata_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Load lightweight metadata index for all models.
 
@@ -40,6 +36,7 @@ def load_metadata(metadata_path: str = METADATA_FILE_PATH) -> Dict[str, Any]:
             }
         }
     """
+    metadata_path = metadata_path or workspace.metadata_path()
     if not os.path.exists(metadata_path):
         logger.info(f"No metadata file found at {metadata_path}, starting fresh")
         return {}
@@ -54,7 +51,7 @@ def load_metadata(metadata_path: str = METADATA_FILE_PATH) -> Dict[str, Any]:
         return {}
 
 
-def save_metadata(metadata: Dict[str, Any], metadata_path: str = METADATA_FILE_PATH):
+def save_metadata(metadata: Dict[str, Any], metadata_path: Optional[str] = None):
     """
     Save lightweight metadata index to file.
 
@@ -62,6 +59,7 @@ def save_metadata(metadata: Dict[str, Any], metadata_path: str = METADATA_FILE_P
         metadata: Complete metadata dictionary
         metadata_path: Path to save metadata.json
     """
+    metadata_path = metadata_path or workspace.metadata_path()
     try:
         # Ensure directory exists
         Path(metadata_path).parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +73,7 @@ def save_metadata(metadata: Dict[str, Any], metadata_path: str = METADATA_FILE_P
         logger.error(f"Error saving metadata to {metadata_path}: {e}")
 
 
-def load_model_data(version: str, data_folder: str = TMP_MODEL_DATA_FOLDER) -> Dict[str, Any]:
+def load_model_data(version: str, data_folder: Optional[str] = None) -> Dict[str, Any]:
     """
     Load full model component data for a specific version.
 
@@ -86,6 +84,7 @@ def load_model_data(version: str, data_folder: str = TMP_MODEL_DATA_FOLDER) -> D
     Returns:
         Dictionary with complete model information (same structure as models_dictionary entry)
     """
+    data_folder = data_folder or workspace.model_data_dir()
     data_path = os.path.join(data_folder, f"{version}.json")
 
     if not os.path.exists(data_path):
@@ -102,7 +101,7 @@ def load_model_data(version: str, data_folder: str = TMP_MODEL_DATA_FOLDER) -> D
         raise
 
 
-def save_model_data(version: str, model_info: Dict[str, Any], data_folder: str = TMP_MODEL_DATA_FOLDER):
+def save_model_data(version: str, model_info: Dict[str, Any], data_folder: Optional[str] = None):
     """
     Save full model component data to individual file.
 
@@ -111,6 +110,7 @@ def save_model_data(version: str, model_info: Dict[str, Any], data_folder: str =
         model_info: Complete model information dictionary
         data_folder: Directory to save model data files
     """
+    data_folder = data_folder or workspace.model_data_dir()
     try:
         # Ensure directory exists
         Path(data_folder).mkdir(parents=True, exist_ok=True)
@@ -152,7 +152,7 @@ def extract_metadata_from_model_info(
     pickle_path = model_info.get("local_path_to_object", "")
 
     # Generate data path
-    data_path = os.path.join(TMP_MODEL_DATA_FOLDER, f"{version_name}.json")
+    data_path = os.path.join(workspace.model_data_dir(), f"{version_name}.json")
 
     metadata = {
         "solution_status": solution_status,
@@ -261,7 +261,7 @@ def add_model_to_metadata(
 def save_synthetic_paper_path(
     model_version: str,
     paper_path: str,
-    metadata_path: str = METADATA_FILE_PATH
+    metadata_path: Optional[str] = None
 ):
     """
     Save synthetic paper path to metadata for caching.
@@ -310,7 +310,7 @@ def save_synthetic_paper_path(
 
 def get_cached_synthetic_paper(
     model_version: str,
-    metadata_path: str = METADATA_FILE_PATH
+    metadata_path: Optional[str] = None
 ) -> Optional[str]:
     """
     Retrieve cached synthetic paper path from metadata if it exists.

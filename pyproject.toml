@@ -5,9 +5,12 @@ description = "Conversational assistant for feasible and infeasible optimization
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "aiosqlite>=0.22.1",
+    "cloudpickle>=3.1.2",
     "fastapi>=0.136.1",
     "google-adk>=2.9.2",
     "gurobipy>=13.0.1",
+    "highspy>=1.15.1",
     "langchain>=1.2.15",
     "langchain-experimental>=0.4.1",
     "litellm>=1.85.0",

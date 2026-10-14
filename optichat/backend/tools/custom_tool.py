@@ -6,13 +6,15 @@ from loguru import logger
 import pyomo.environ as pyo
 from pyomo.contrib.iis import write_iis
 from pyomo.opt import SolverFactory, SolverStatus, TerminationCondition
+from optichat.backend.config.solver import get_solver_pyomo_name, make_solver
 from pyomo.core.base.param import ParamData
 from pyomo.core.base.componentuid import ComponentUID
 
 from google.adk.tools.tool_context import ToolContext
 from optichat.backend.tools.shortcut_functions import load_model, solve_model, _parse_uncertainty_from_state, relax_constraint_and_penalize_violation, add_dual_suffix
 from optichat.backend.tools.extract_tool import unique_component_name
-from optichat.backend.config.constants import MODELS_DICTIONARY, MODEL_VERSIONS, TMP_ROBUST_FOLDER
+from optichat.backend.config import workspace
+from optichat.backend.config.constants import MODELS_DICTIONARY, MODEL_VERSIONS
 
 #LDR
 from optichat.backend.tools.ldr_explain import core as ldr_core
@@ -254,10 +256,10 @@ def infeasibility_diagnosis(
     logger.info(f"Starting Multi-Stage Infeasibility Diagnosis for version: {version}")
     
     # Read config
-    solver_name = tool_context.state.get("SOLVER_NAME", "gurobi")
+    solver_name = tool_context.state.get("SOLVER_NAME", get_solver_pyomo_name())
     solver_options = tool_context.state.get("SOLVER_OPTIONS", None)
     tee = bool(tool_context.state.get("SOLVE_TEE", False))
-    save_iis_dir = tool_context.state.get("IIS_SAVE_DIR", os.path.join("tmp", "iis", version))
+    save_iis_dir = tool_context.state.get("IIS_SAVE_DIR", str(workspace.iis_dir(version)))
     os.makedirs(save_iis_dir, exist_ok=True)
 
     # Load model
@@ -614,7 +616,7 @@ def save_diagnosis_report(version: str, diagnosis_result: Dict[str, Any], round_
     import json
     
     # Create output directory
-    save_dir = os.path.join(os.getcwd(), "tmp", "inf_detail")
+    save_dir = str(workspace.inf_detail_dir())
     os.makedirs(save_dir, exist_ok=True)
     
     # Create filename (JSON format)
@@ -1506,7 +1508,7 @@ def robustness_analysis_scenario(
             }
 
     # --- Output paths ---
-    robust_out_dir = os.path.join(os.getcwd(), TMP_ROBUST_FOLDER)
+    robust_out_dir = str(workspace.robust_dir())
     os.makedirs(robust_out_dir, exist_ok=True)
     safe_version = version.replace("/", "_").replace("\\", "_")
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -1540,7 +1542,7 @@ def robustness_analysis_scenario(
     if has_binding:
         base_model = add_dual_suffix(base_model)
         if hasattr(base_model, "dual"):
-            SolverFactory("gurobi").solve(base_model, tee=False, load_solutions=True)
+            make_solver().solve(base_model, tee=False, load_solutions=True)
             all_duals: Dict[str, Any] = {}
             for con_data, dual_val in base_model.dual.items():
                 try:
