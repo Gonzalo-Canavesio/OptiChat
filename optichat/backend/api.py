@@ -17,7 +17,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from optichat.backend.agents.root.agent import create_root_agent
-from optichat.backend.config.constants import MODEL_VERSIONS
+from optichat.backend.config.constants import MODEL_LOAD_ERRORS, MODEL_VERSIONS
 from optichat.backend.config.solver import (
     SolverNotAvailableError,
     make_solver,
@@ -299,11 +299,13 @@ async def create_chat(
             await _run_agent(chat_id, init, profile, solver_key)
             session = await _get_session(chat_id)
             if not session.state.get(MODEL_VERSIONS):
+                errors = session.state.get(MODEL_LOAD_ERRORS) or {}
+                cause = "; ".join(errors.values()) or "see the backend log for details"
                 raise HTTPException(
                     422,
-                    "The model could not be loaded. Check that the .py file defines "
-                    "a Pyomo `model` and that the data files it reads were uploaded "
-                    "(see the backend log for details).",
+                    f"The model could not be loaded ({cause}). Check that the .py "
+                    "file defines a Pyomo model and that every data file it reads "
+                    "was uploaded.",
                 )
         except Exception:
             await sessions.delete_session(
