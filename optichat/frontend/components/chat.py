@@ -22,7 +22,7 @@ AVAILABLE_MODELING_LANGUAGES: list[ModelingLanguage] = [
 
 
 def _handle_create_chat_submission(
-    model_files: list[UploadedFile] | None,
+    model_file: UploadedFile | None,
     data_files: list[UploadedFile] | None,
     model_paper: UploadedFile | None,
     modeling_language: ModelingLanguage | None,
@@ -33,14 +33,14 @@ def _handle_create_chat_submission(
     if modeling_language is None:
         st.error("Please select a modeling language.")
         return False
-    if model_files is None:
+    if model_file is None:
         st.error("Please upload a .py model file.")
         return False
 
     try:
         with st.spinner("Initializing model and starting chat..."):
             chat = create_chat(
-                model_files=model_files,
+                model_file=model_file,
                 data_files=data_files,
                 model_paper=model_paper,
                 modeling_language=modeling_language,
@@ -78,14 +78,16 @@ def render_create_chat_dialog() -> None:
         )
 
     with st.form("create_chat_dialog_form", border=False):
-        model_files = st.file_uploader(
-            "Model files (.py) (Required)",
+        model_file = st.file_uploader(
+            "Model file (.py) (Required)",
             type=["py"],
-            accept_multiple_files=True,
         )
         data_files = st.file_uploader(
             "Data files (Optional)",
             accept_multiple_files=True,
+            help="Files the model reads, in any format. They are placed next to the "
+            "model file, so open them with a relative path (e.g. "
+            "`open(\"my_data.json\")`).",
         )
         chat_name = st.text_input(
             "Chat name (Optional)",
@@ -100,7 +102,7 @@ def render_create_chat_dialog() -> None:
 
     if submitted:
         if _handle_create_chat_submission(
-            model_files=model_files,
+            model_file=model_file,
             data_files=data_files,
             model_paper=model_paper,
             modeling_language=selected_language,

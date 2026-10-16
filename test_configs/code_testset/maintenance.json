@@ -2,15 +2,14 @@
   "model_name": "maintenance",
   "models": {
     "local_resources": [
-      "Feas/maintenance.py"
+      "examples/maintenance/maintenance.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/maintenance_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/maintenance.py"
+      "examples/maintenance/maintenance.py"
     ]
   }
 }

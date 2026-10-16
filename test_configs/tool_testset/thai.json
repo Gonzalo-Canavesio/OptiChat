@@ -2,15 +2,14 @@
   "model_name": "thai",
   "models": {
     "local_resources": [
-      "Feas/thai.py"
+      "examples/thai/thai.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/thai_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/thai.py"
+      "examples/thai/thai.py"
     ]
   }
 }

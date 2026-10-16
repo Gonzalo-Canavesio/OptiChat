@@ -2,15 +2,14 @@
   "model_name": "multipleMB_inf_1",
   "models": {
     "local_resources": [
-      "Infeas/multipleMB_inf_1.py"
+      "examples/multipleMB_inf_1/multipleMB_inf_1.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Infeas/multipleMB_inf_1_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Infeas/multipleMB_inf_1.py"
+      "examples/multipleMB_inf_1/multipleMB_inf_1.py"
     ]
   }
 }

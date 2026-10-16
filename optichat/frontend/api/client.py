@@ -46,7 +46,7 @@ def fetch_chat(chat_id: str) -> ChatInfo | None:
 
 
 def create_chat(
-    model_files: list[UploadedFile],
+    model_file: UploadedFile,
     data_files: list[UploadedFile] | None,
     model_paper: UploadedFile | None,
     modeling_language: str,
@@ -61,11 +61,7 @@ def create_chat(
         "chat_name": chat_name,
     }
 
-    files = []
-    for model_file in model_files:
-        files.append(
-            ("model_files", (model_file.name, model_file.getvalue(), "text/x-python"))
-        )
+    files = [("model_file", (model_file.name, model_file.getvalue(), "text/x-python"))]
 
     for data_file in data_files or []:
         content_type = data_file.type or "application/octet-stream"

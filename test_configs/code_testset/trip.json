@@ -2,15 +2,14 @@
   "model_name": "trip",
   "models": {
     "local_resources": [
-      "Feas/trip.py"
+      "examples/trip/trip.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/trip_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/trip.py"
+      "examples/trip/trip.py"
     ]
   }
 }

@@ -2,15 +2,14 @@
   "model_name": "magic",
   "models": {
     "local_resources": [
-      "Feas/magic.py"
+      "examples/magic/magic.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/magic_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/magic.py"
+      "examples/magic/magic.py"
     ]
   }
 }

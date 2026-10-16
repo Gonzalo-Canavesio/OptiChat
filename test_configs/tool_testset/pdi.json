@@ -2,15 +2,14 @@
   "model_name": "pdi",
   "models": {
     "local_resources": [
-      "Feas/pdi.py"
+      "examples/pdi/pdi.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/pdi_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/pdi.py"
+      "examples/pdi/pdi.py"
     ]
   }
 }

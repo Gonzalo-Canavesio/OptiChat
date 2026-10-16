@@ -38,8 +38,7 @@ target-version = "py312"
 exclude = [
     ".git",
     ".venv",
-    "Feas",
-    "Infeas",
+    "examples",
     "debug_use",
     "test_set",
     "test_results",

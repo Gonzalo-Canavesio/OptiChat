@@ -2,15 +2,14 @@
   "model_name": "STN",
   "models": {
     "local_resources": [
-      "Feas/STN.py"
+      "examples/STN/STN.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/STN_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/STN.py"
+      "examples/STN/STN.py"
     ]
   }
 }

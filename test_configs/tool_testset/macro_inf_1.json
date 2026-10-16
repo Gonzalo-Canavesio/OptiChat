@@ -2,15 +2,14 @@
   "model_name": "macro_inf_1",
   "models": {
     "local_resources": [
-      "Infeas/macro_inf_1.py"
+      "examples/macro_inf_1/macro_inf_1.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Infeas/macro_inf_1_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Infeas/macro_inf_1.py"
+      "examples/macro_inf_1/macro_inf_1.py"
     ]
   }
 }

@@ -2,15 +2,14 @@
   "model_name": "process",
   "models": {
     "local_resources": [
-      "Feas/process.py"
+      "examples/process/process.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/process_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/process.py"
+      "examples/process/process.py"
     ]
   }
 }

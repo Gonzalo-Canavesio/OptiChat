@@ -2,15 +2,14 @@
   "model_name": "landing",
   "models": {
     "local_resources": [
-      "Feas/landing.py"
+      "examples/landing/landing.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/landing_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/landing.py"
+      "examples/landing/landing.py"
     ]
   }
 }

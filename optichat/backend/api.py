@@ -198,20 +198,16 @@ def _save_upload(upload: UploadFile, directory: Path) -> Path:
     return path
 
 
-def _build_config(
-    models: list[Path], data: Path | None, paper: Path | None
-) -> dict[str, Any]:
+def _build_config(model: Path, paper: Path | None) -> dict[str, Any]:
     cfg: dict[str, Any] = {
-        "model_name": models[0].stem,
+        "model_name": model.stem,
         "models": {
-            "local_resources": [str(p) for p in models],
+            "local_resources": [str(model)],
             "is_solved": False,
             "is_lp": False,
         },
-        "models_code": {"local_resources": [str(p) for p in models]},
+        "models_code": {"local_resources": [str(model)]},
     }
-    if data:
-        cfg["models"]["json_data_path"] = str(data)
     if paper:
         cfg["models_paper"] = {"local_resources": [str(paper)]}
     return cfg
@@ -235,7 +231,7 @@ async def create_chat(
     modeling_language: str = Form(...),
     solver: str = Form(...),
     chat_name: str = Form(""),
-    model_files: list[UploadFile] = File(...),
+    model_file: UploadFile = File(...),
     data_files: list[UploadFile] | None = File(None),
     model_paper: UploadFile | None = File(None),
 ) -> dict[str, Any]:
@@ -245,8 +241,15 @@ async def create_chat(
             f"Modeling language '{modeling_language}' is not supported yet. "
             f"Supported: {', '.join(sorted(SUPPORTED_MODELING_LANGUAGES))}.",
         )
-    if not all((f.filename or "").endswith(".py") for f in model_files):
-        raise HTTPException(422, "Model files must be .py files.")
+    model_name = Path(model_file.filename or "").name
+    if not model_name.endswith(".py"):
+        raise HTTPException(422, "The model file must be a .py file.")
+    # The model and its data files share a directory, so names must not collide.
+    data_names = [Path(f.filename or "").name for f in data_files or []]
+    if model_name in data_names or len(set(data_names)) != len(data_names):
+        raise HTTPException(
+            422, "The model and data files must all have different file names."
+        )
 
     async with _run_lock:
         profile, solver_key = _prepare_run(profile_label, solver)
@@ -254,25 +257,20 @@ async def create_chat(
         chat_id = uuid.uuid4().hex[:12]
         chat_dir = CHATS_DIR / chat_id
         try:
-            models = [_save_upload(f, chat_dir / "model") for f in model_files]
-            data_paths = [_save_upload(f, chat_dir / "data") for f in data_files or []]
-            data = next((p for p in data_paths if p.suffix == ".json"), None)
-            if len(data_paths) > 1 or (data_paths and data is None):
-                logger.warning(
-                    "Only a single .json data file is read; using "
-                    f"{data.name if data else 'none'} out of "
-                    f"{[p.name for p in data_paths]}"
-                )
+            # The model runs from this directory and reads its data files from it
+            model = _save_upload(model_file, chat_dir / "model")
+            for data_file in data_files or []:
+                _save_upload(data_file, chat_dir / "model")
             paper = (
                 _save_upload(model_paper, chat_dir / "paper") if model_paper else None
             )
-            cfg = _build_config(models, data, paper)
+            cfg = _build_config(model, paper)
         except Exception:
             shutil.rmtree(chat_dir, ignore_errors=True)
             raise
 
         name = re.sub(r"\s+", " ", chat_name).strip() or (
-            f"{models[0].stem} · {datetime.now():%b %d %H:%M}"
+            f"{model.stem} · {datetime.now():%b %d %H:%M}"
         )
         await sessions.create_session(
             app_name=APP_NAME,
@@ -304,7 +302,7 @@ async def create_chat(
                 raise HTTPException(
                     422,
                     "The model could not be loaded. Check that the .py file defines "
-                    "a Pyomo `model` and that the data file matches it "
+                    "a Pyomo `model` and that the data files it reads were uploaded "
                     "(see the backend log for details).",
                 )
         except Exception:

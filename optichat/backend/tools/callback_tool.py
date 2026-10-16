@@ -2,6 +2,7 @@ import time
 import json
 import os
 import glob
+import traceback
 from xml.parsers.expat import model
 import tiktoken
 from loguru import logger
@@ -16,7 +17,7 @@ from google.adk.models import LlmResponse, LlmRequest
 from optichat.backend.config import workspace
 from optichat.backend.config.constants import (IS_SESSION_INITIALIZED, PERSISTENT_STATES, TEMPORARY_STATES,
                                        CFG, EXPERT_AGENT_USES, EXPERT_AGENT_MAX_USES, EXPERT_AGENT_START_TIME,
-                                       MODELS_DICTIONARY, MODEL_VERSIONS, HISTORICAL_MODELS_METADATA,
+                                       MODELS_DICTIONARY, MODEL_VERSIONS, HISTORICAL_MODELS_METADATA, MODEL_LOAD_ERRORS,
                                        IS_MODELS_DICTIONARY_AVAILABLE,
                                        NEED_SYNTHETIC_PAPER,
                                        MODEL_FOR_PAPER_GENERATION, USER_QUERY,
@@ -178,7 +179,8 @@ def initialize_session(callback_context: CallbackContext):
     if not callback_context.state[IS_SESSION_INITIALIZED]:
         cfg = _init_cfg(cfg)
         callback_context.state[CFG] = cfg
-        models_dictionary, current_model_versions, historical_metadata = _init_models(cfg)
+        models_dictionary, current_model_versions, historical_metadata, load_errors = _init_models(cfg)
+        callback_context.state[MODEL_LOAD_ERRORS] = load_errors
         
         # Available if we have loaded models OR historical metadata (lazy loading)
         is_model_dictionary_available = len(models_dictionary) > 0 or len(historical_metadata) > 0
@@ -276,7 +278,7 @@ def _find_and_copy_source_file(version_name: str, cfg: dict) -> Optional[str]:
     
     for path in code_paths:
         if "*" in path:
-            # Handle wildcard paths (e.g., "Infeas/*.py")
+            # Handle wildcard paths (e.g., "examples/*/*.py")
             matches = glob.glob(path.replace("*", f"{version_name}"))
             if matches:
                 source_file = matches[0]
@@ -310,20 +312,40 @@ def _find_and_copy_source_file(version_name: str, cfg: dict) -> Optional[str]:
         logger.error(f"Failed to copy source file {source_file}: {e}")
         return None
 
-def _load_model_from_py(py_file_path: str, json_data: dict = None):
+def _find_model(module, py_file_path: str):
+    """The module's `model` if it is a ConcreteModel, else its only ConcreteModel."""
+    import pyomo.environ as pyo
+
+    candidate = getattr(module, "model", None)
+    if isinstance(candidate, pyo.ConcreteModel):
+        return candidate
+    models = [v for v in vars(module).values() if isinstance(v, pyo.ConcreteModel)]
+    if len(models) == 1:
+        return models[0]
+    raise ValueError(
+        f"{os.path.basename(py_file_path)} must define one Pyomo ConcreteModel "
+        f"(preferably named `model`); found {len(models)}."
+    )
+
+
+def _load_model_from_py(py_file_path: str):
     """
-    Load Pyomo model from .py file with optional JSON data injection.
-    This enables the separated .py + .json format for model initialization.
-    
+    Load the Pyomo model defined by a .py file.
+
+    The file runs from its own directory (cwd and sys.path), so it reads the data
+    files next to it with relative paths, in whatever format and way it chooses;
+    nothing is injected into its namespace.
+
     Args:
-        py_file_path: Path to the .py file containing model definition
-        json_data: Optional dictionary to inject as 'data' in module namespace
-    
+        py_file_path: Path to the .py file containing the model definition
+
     Returns:
         Tuple of (model, version_name)
     """
     import importlib.util
     import sys
+
+    base_dir = os.path.dirname(os.path.abspath(py_file_path))
 
     # Create module from file.
     # IMPORTANT: do NOT register in sys.modules before pickling.
@@ -336,18 +358,38 @@ def _load_model_from_py(py_file_path: str, json_data: dict = None):
     spec = importlib.util.spec_from_file_location("loaded_model", py_file_path)
     loaded_module = importlib.util.module_from_spec(spec)
 
-    # Inject JSON data if provided (same as extractor.py::initial_loading)
-    if json_data is not None:
-        loaded_module.__dict__["data"] = json_data
+    modules_before = set(sys.modules)
+    previous_cwd = os.getcwd()
+    sys.path.insert(0, base_dir)
+    os.chdir(base_dir)
+    try:
+        spec.loader.exec_module(loaded_module)
+    finally:
+        os.chdir(previous_cwd)
+        sys.path.remove(base_dir)
+        # Helper modules the model imported from its directory get the same treatment
+        # as the model module (pickled by value), and are not reused by another chat
+        # that has a different file with the same name.
+        for name in set(sys.modules) - modules_before:
+            module_file = getattr(sys.modules[name], "__file__", None) or ""
+            if os.path.abspath(module_file).startswith(base_dir + os.sep):
+                del sys.modules[name]
 
-    # Execute the module (works without sys.modules registration)
-    spec.loader.exec_module(loaded_module)
-
-    # Extract model and version name
-    model = loaded_module.model
+    model = _find_model(loaded_module, py_file_path)
     version = os.path.splitext(os.path.basename(py_file_path))[0]
 
     return model, version
+
+
+def _describe_load_error(error: Exception, resource_path: str) -> str:
+    """'<file>, line N: Type: message', pointing at the model's own line when it raised."""
+    model_file = os.path.abspath(resource_path)
+    frames = [f for f in traceback.extract_tb(error.__traceback__)
+              if os.path.abspath(f.filename) == model_file]
+    where = os.path.basename(resource_path)
+    if frames:
+        where += f", line {frames[-1].lineno}"
+    return f"{where}: {type(error).__name__}: {error}"
 
 
 def _init_models(cfg: dict):
@@ -361,6 +403,7 @@ def _init_models(cfg: dict):
         models_dictionary: Runtime cache with current models only
         current_model_versions: List of current model versions (shown to root agent)
         historical_metadata: Dict of all models metadata (for lazy loading)
+        load_errors: {model file name: description of why it could not be loaded}
     """
     # STEP 1: Load existing metadata (lightweight, always loaded)
     metadata = load_metadata()
@@ -374,6 +417,7 @@ def _init_models(cfg: dict):
 
     # STEP 2: Initialize current models from config
     models_dictionary = {}  # Runtime cache for loaded models
+    load_errors = {}  # model file name -> why it could not be loaded
     current_model_versions = []  # Models from config (shown to root agent)
 
     if "models" in cfg:
@@ -388,21 +432,9 @@ def _init_models(cfg: dict):
                     logger.info(f"Loading model from pickle: {resource_path}")
                     model, version = restore_model_object(resource_path)
                 elif resource_path.endswith(".py"):
-                    # NEW PATH: Load from .py + .json
+                    # The model reads its own data files from its directory
                     logger.info(f"Loading model from Python file: {resource_path}")
-                    
-                    # Load JSON data if provided
-                    json_data = None
-                    json_data_path = cfg["models"].get("json_data_path")
-                    if json_data_path and os.path.exists(json_data_path):
-                        logger.info(f"Loading JSON data from: {json_data_path}")
-                        with open(json_data_path, 'r') as f:
-                            json_data = json.load(f)
-                    else:
-                        logger.warning(f"No JSON data file found or specified for {resource_path}")
-                    
-                    # Load model from .py file with optional JSON data
-                    model, version = _load_model_from_py(resource_path, json_data)
+                    model, version = _load_model_from_py(resource_path)
                 else:
                     raise ValueError(f"Unsupported model file format: {resource_path}. Must be .pkl or .py")
                 
@@ -444,6 +476,7 @@ def _init_models(cfg: dict):
             except Exception as e:
                 logger.error(f"Failed to load model from {resource_path}: {e}")
                 logger.exception("Full traceback:")
+                load_errors[os.path.basename(resource_path)] = _describe_load_error(e, resource_path)
                 # Continue to next model instead of failing entire initialization
                 continue
 
@@ -456,7 +489,7 @@ def _init_models(cfg: dict):
 
     logger.info(f"Current models (shown to root agent): {current_model_versions}")
     
-    return models_dictionary, current_model_versions, historical_metadata
+    return models_dictionary, current_model_versions, historical_metadata, load_errors
 
 
 def _read_models_code_files(cfg: dict) -> Optional[str]:

@@ -2,15 +2,14 @@
   "model_name": "recovery",
   "models": {
     "local_resources": [
-      "Feas/recovery.py"
+      "examples/recovery/recovery.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/recovery_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/recovery.py"
+      "examples/recovery/recovery.py"
     ]
   }
 }

@@ -2,15 +2,14 @@
   "model_name": "RTN",
   "models": {
     "local_resources": [
-      "Feas/RTN.py"
+      "examples/RTN/RTN.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/RTN_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/RTN.py"
+      "examples/RTN/RTN.py"
     ]
   }
 }

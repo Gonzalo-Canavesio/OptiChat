@@ -2,15 +2,14 @@
   "model_name": "chem",
   "models": {
     "local_resources": [
-      "Feas/chem.py"
+      "examples/chem/chem.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/chem_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/chem.py"
+      "examples/chem/chem.py"
     ]
   }
 }

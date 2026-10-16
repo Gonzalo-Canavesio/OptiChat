@@ -2,15 +2,14 @@
   "model_name": "mesc",
   "models": {
     "local_resources": [
-      "Feas/mesc.py"
+      "examples/mesc/mesc.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/mesc_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/mesc.py"
+      "examples/mesc/mesc.py"
     ]
   }
 }

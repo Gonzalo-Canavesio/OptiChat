@@ -2,15 +2,14 @@
   "model_name": "job",
   "models": {
     "local_resources": [
-      "Feas/job.py"
+      "examples/job/job.py"
     ],
     "is_solved": false,
-    "is_lp": false,
-    "json_data_path": "Feas/job_data.json"
+    "is_lp": false
   },
   "models_code": {
     "local_resources": [
-      "Feas/job.py"
+      "examples/job/job.py"
     ]
   }
 }
