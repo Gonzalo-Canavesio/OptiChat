@@ -17,9 +17,14 @@ from loguru import logger
 from pydantic import BaseModel
 
 from optichat.backend.agents.root.agent import create_root_agent
-from optichat.backend.config.constants import MODEL_LOAD_ERRORS, MODEL_VERSIONS
+from optichat.backend.config.constants import (
+    CHAT_MODELING_LANGUAGE,
+    MODEL_LOAD_ERRORS,
+    MODEL_VERSIONS,
+)
 from optichat.backend.config.solver import (
     SolverNotAvailableError,
+    get_solver_gamspy_name,
     make_solver,
     normalize_solver,
     use_solver,
@@ -35,7 +40,6 @@ logging.getLogger("opentelemetry").setLevel(logging.ERROR)
 
 APP_NAME = "backend"
 USER_ID = "local"
-SUPPORTED_MODELING_LANGUAGES = {"Pyomo"}
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = Path(os.getenv("OPTICHAT_DATA_DIR", ROOT / ".optichat"))
@@ -77,7 +81,12 @@ def _get_root_agent(profile: ProfileConfig, solver: str):
     return _agents[key]
 
 
-def _prepare_run(profile_label: str, solver_label: str):
+def _prepare_run(profile_label: str, solver_label: str, modeling_language: str | None):
+    """Profile and solver for a run, failing early if the solver cannot be used.
+
+    A chat being created has no modeling language yet (it is detected from the model
+    file), so the solver is not checked; solving the model reports the problem.
+    """
     try:
         solver = normalize_solver(solver_label)
     except ValueError as e:
@@ -85,7 +94,11 @@ def _prepare_run(profile_label: str, solver_label: str):
     profile = _get_profile(profile_label)
     try:
         with use_solver(solver):
-            make_solver()  # fail early with a clear message if it is not installed
+            # fail early with a clear message if the solver cannot be used
+            if modeling_language == "GAMSPy":
+                get_solver_gamspy_name()
+            elif modeling_language is not None:
+                make_solver()
     except SolverNotAvailableError as e:
         raise HTTPException(422, str(e)) from e
     return profile, solver
@@ -138,7 +151,7 @@ def _chat_summary(session: Session) -> dict[str, Any]:
         "models": _loaded_models(state),
         "id": session.id,
         "name": state.get("chat_name", session.id),
-        "modeling_language": state.get("chat_modeling_language"),
+        "modeling_language": state.get(CHAT_MODELING_LANGUAGE),
         "created_at": state.get("chat_created_at"),
     }
 
@@ -228,19 +241,12 @@ async def get_chat(chat_id: str) -> dict[str, Any]:
 @app.post("/chats")
 async def create_chat(
     profile_label: str = Form(...),
-    modeling_language: str = Form(...),
     solver: str = Form(...),
     chat_name: str = Form(""),
     model_file: UploadFile = File(...),
     data_files: list[UploadFile] | None = File(None),
     model_paper: UploadFile | None = File(None),
 ) -> dict[str, Any]:
-    if modeling_language not in SUPPORTED_MODELING_LANGUAGES:
-        raise HTTPException(
-            422,
-            f"Modeling language '{modeling_language}' is not supported yet. "
-            f"Supported: {', '.join(sorted(SUPPORTED_MODELING_LANGUAGES))}.",
-        )
     model_name = Path(model_file.filename or "").name
     if not model_name.endswith(".py"):
         raise HTTPException(422, "The model file must be a .py file.")
@@ -252,7 +258,7 @@ async def create_chat(
         )
 
     async with _run_lock:
-        profile, solver_key = _prepare_run(profile_label, solver)
+        profile, solver_key = _prepare_run(profile_label, solver, None)
 
         chat_id = uuid.uuid4().hex[:12]
         chat_dir = CHATS_DIR / chat_id
@@ -278,7 +284,6 @@ async def create_chat(
             session_id=chat_id,
             state={
                 "chat_name": name,
-                "chat_modeling_language": modeling_language,
                 "chat_created_at": datetime.now().isoformat(timespec="seconds"),
             },
         )
@@ -304,8 +309,8 @@ async def create_chat(
                 raise HTTPException(
                     422,
                     f"The model could not be loaded ({cause}). Check that the .py "
-                    "file defines a Pyomo model and that every data file it reads "
-                    "was uploaded.",
+                    "file defines a Pyomo or GAMSPy model and that every data file "
+                    "it reads was uploaded.",
                 )
         except Exception:
             await sessions.delete_session(
@@ -319,9 +324,12 @@ async def create_chat(
 
 @app.post("/chats/{chat_id}/messages")
 async def send_message(chat_id: str, request: MessageRequest) -> dict[str, Any]:
-    await _get_session(chat_id)
+    session = await _get_session(chat_id)
+    modeling_language = session.state.get(CHAT_MODELING_LANGUAGE, "Pyomo")
     async with _run_lock:
-        profile, solver = _prepare_run(request.profile_label, request.solver)
+        profile, solver = _prepare_run(
+            request.profile_label, request.solver, modeling_language
+        )
         content = types.Content(role="user", parts=[types.Part(text=request.message)])
         await _run_agent(chat_id, content, profile, solver)
     return await _chat_detail(chat_id)

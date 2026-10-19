@@ -1,5 +1,3 @@
-from typing import Literal
-
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
@@ -8,31 +6,19 @@ from optichat.frontend.state import (
     ChatInfo,
     ChatMessage,
     LoadedModel,
-    clean_session_state_for_chat_form,
     state,
 )
 from optichat.llm.models import ProfileConfig
-
-ModelingLanguage = Literal["Pyomo", "GAMSPy", "gurobipy"]
-AVAILABLE_MODELING_LANGUAGES: list[ModelingLanguage] = [
-    "Pyomo",
-    "GAMSPy",
-    "gurobipy",
-]
 
 
 def _handle_create_chat_submission(
     model_file: UploadedFile | None,
     data_files: list[UploadedFile] | None,
     model_paper: UploadedFile | None,
-    modeling_language: ModelingLanguage | None,
     profile: ProfileConfig,
     solver: str,
     chat_name: str,
 ) -> bool:
-    if modeling_language is None:
-        st.error("Please select a modeling language.")
-        return False
     if model_file is None:
         st.error("Please upload a .py model file.")
         return False
@@ -43,7 +29,6 @@ def _handle_create_chat_submission(
                 model_file=model_file,
                 data_files=data_files,
                 model_paper=model_paper,
-                modeling_language=modeling_language,
                 profile_label=profile.label,
                 solver=solver,
                 chat_name=chat_name.strip(),
@@ -56,31 +41,17 @@ def _handle_create_chat_submission(
     return True
 
 
-@st.dialog(
-    "Create New Chat", width="medium", on_dismiss=clean_session_state_for_chat_form
-)
+@st.dialog("Create New Chat", width="medium")
 def render_create_chat_dialog() -> None:
     if state.selected_profile is None or state.selected_solver is None:
         return
-
-    selected_language = st.selectbox(
-        "Modeling Language (Required)",
-        options=AVAILABLE_MODELING_LANGUAGES,
-        index=None,
-        key="modeling_language_selectbox",
-        help="Choose the framework used in your model.",
-    )
-
-    if selected_language == "gurobipy":
-        st.warning(
-            "**GurobiPy** ignores the custom solver selected in the sidebar "
-            "and uses its native Gurobi solver."
-        )
 
     with st.form("create_chat_dialog_form", border=False):
         model_file = st.file_uploader(
             "Model file (.py) (Required)",
             type=["py"],
+            help="A Pyomo or GAMSPy model. The modeling language is detected "
+            "automatically.",
         )
         data_files = st.file_uploader(
             "Data files (Optional)",
@@ -105,12 +76,10 @@ def render_create_chat_dialog() -> None:
             model_file=model_file,
             data_files=data_files,
             model_paper=model_paper,
-            modeling_language=selected_language,
             profile=state.selected_profile,
             solver=state.selected_solver,
             chat_name=chat_name,
         ):
-            clean_session_state_for_chat_form()
             st.rerun()
 
 

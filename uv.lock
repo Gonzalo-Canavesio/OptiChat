@@ -709,6 +709,64 @@ wheels = [
 ]
 
 [[package]]
+name = "gamsapi"
+version = "54.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/77/d9a28ffbbbb5924ec452e16f4e3111468e87d2b89d19614c5db1a767a315/gamsapi-54.6.0.tar.gz", hash = "sha256:b29baf82e5e6d661f20ad986d93931c3b415021029ae2d9ba94ec85d307bafb3", size = 956696, upload-time = "2026-10-15T14:44:53.658Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/c2/91a06948a369501928d66a07d152ca4a327ca36119cdae1eea2f62e1a102/gamsapi-54.6.0-cp312-cp312-macosx_13_0_arm64.whl", hash = "sha256:c8ca5a85667d7ce24c7b44daf435622b80cd182d29bfcc24279f43c8989e7583", size = 1197338, upload-time = "2026-10-15T14:36:51.521Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/6a/a7bafc0d6a570d3e9a541100bb558438b6b64b697d49fcda0a28b2a29481/gamsapi-54.6.0-cp312-cp312-macosx_13_0_x86_64.whl", hash = "sha256:88599d2284d6c4b0a5527dccbf803d5cb90d7c967f10e59f8762756c118dd1a4", size = 1228774, upload-time = "2026-10-15T14:44:19.179Z" },
+    { url = "https://files.pythonhosted.org/packages/09/27/851d0dd7e299cfd9e8b3643481e19f13566e26ccf251811140072862c850/gamsapi-54.6.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:8874754c02e7aee99385f94603d80bb3dcf6ba115e8f6f93650129af0545ca20", size = 1234688, upload-time = "2026-10-15T14:43:20.496Z" },
+    { url = "https://files.pythonhosted.org/packages/43/e6/13040626c45d8489fe40611c5eaaa8f86a8e6b1d73d81cee6e25a6ae2400/gamsapi-54.6.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:9e6ee26ae1dd5ed5ac08e1ba8ede678265cb743d871773ebedb637f1f683547c", size = 1261601, upload-time = "2026-10-15T14:37:01.244Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/79/28bd953fc6d871dc7569b6f88c5ddefc7b997feb4480ab65bf5e93094f0d/gamsapi-54.6.0-cp312-cp312-win_amd64.whl", hash = "sha256:443999ce1614a2a3b3fbf7542a8b93ec83cf797b219ee4c2a5976d4d0a854baf", size = 1680849, upload-time = "2026-10-15T14:43:13.365Z" },
+    { url = "https://files.pythonhosted.org/packages/83/3d/7de12c71dc9fea6017e1bd685937c28ec9376c98796381288cf1ec59132b/gamsapi-54.6.0-cp313-cp313-macosx_13_0_arm64.whl", hash = "sha256:ff007b3d0c1ee0d229173877fbe8b671405817fc833bb81c76644d2c258e99cd", size = 1195289, upload-time = "2026-10-15T14:43:03.481Z" },
+    { url = "https://files.pythonhosted.org/packages/45/0b/47e1c3212eb411df4f265fe3809ef34e6d25554e7d6f83b4c3ddad6daf31/gamsapi-54.6.0-cp313-cp313-macosx_13_0_x86_64.whl", hash = "sha256:b13b805f39604257145bb8e8feefb6c329f491b850e97a37e641f2124c3efc42", size = 1226913, upload-time = "2026-10-15T14:44:21.631Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/11/50dbb40fc589c7125d531eb616523a90a57fd9ea410d5774fe976eaaafc0/gamsapi-54.6.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:25427c2490a0550d3691fa0dff701e42e08ffbf8ca25aa4d1cc8760f93ef20b0", size = 1232991, upload-time = "2026-10-15T14:43:08.459Z" },
+    { url = "https://files.pythonhosted.org/packages/73/4e/b3c3e7711bb7b3c56ec434590558c4b869f2f14433680ba3995530a62ad4/gamsapi-54.6.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:fbc44ff21b692766e22bd2e2b9942225c79f422874ce9b29b7c373263543b2fa", size = 1259962, upload-time = "2026-10-15T14:43:18.07Z" },
+    { url = "https://files.pythonhosted.org/packages/18/50/1258b599ea11b02eda2b02bd9fb49d691dd876b5a0906e65d6f6ef323693/gamsapi-54.6.0-cp313-cp313-win_amd64.whl", hash = "sha256:9c31fab4f2c6f1a53495b3678196b650cb80c5dcd96ec22c0a81acb6d8bed2ff", size = 1682458, upload-time = "2026-10-15T14:43:00.981Z" },
+    { url = "https://files.pythonhosted.org/packages/de/b9/a42878f0b307291fe9235dc7d5da35f90aebe1fba31621d6ba3ddb447446/gamsapi-54.6.0-cp314-cp314-macosx_13_0_arm64.whl", hash = "sha256:6b237de7e1cb84360a1155259374fc80f270469e61ba5e99249eeb9ea4b61b8f", size = 1195701, upload-time = "2026-10-15T14:44:24.092Z" },
+    { url = "https://files.pythonhosted.org/packages/51/b7/c5bcde1670e419ae5f92e2b2e633bd5195e3ba780cacf0b0c049f9bd3fc1/gamsapi-54.6.0-cp314-cp314-macosx_13_0_x86_64.whl", hash = "sha256:183f3ff07f3a33c94f661e0eae305c0e4ba497519d6ed2bf8ab2d7cada6a30a3", size = 1226939, upload-time = "2026-10-15T14:37:25.198Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/80/13de47a0ef6d8598f8b222006e3ed88c0c357d3d9cee69898f09e7257260/gamsapi-54.6.0-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:cf2c728dc3374cf07cd247aff3c6499f3564d72b498a59a47a2f5a41e702853f", size = 1233507, upload-time = "2026-10-15T14:43:23.088Z" },
+    { url = "https://files.pythonhosted.org/packages/86/8a/0ef618b2bef9b0c1e1be1693e766b3ace6d9e2650750dac1cdb9acb7058d/gamsapi-54.6.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:87ce15a51e892ab86c441a1df6b999e9fc7f554ec72ac01c08c1b294d4578868", size = 1260173, upload-time = "2026-10-15T14:43:15.781Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/f0/36702043df6b6cae5961377d5936a17800a2ee318fa71da2761c3604eba2/gamsapi-54.6.0-cp314-cp314-win_amd64.whl", hash = "sha256:2fc1c113ec4e7e0eacb9ce840de74f3adceef0e21dd6a0864365261d2b18f83d", size = 1712587, upload-time = "2026-10-15T14:42:58.519Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/55/4d7231bb1ac9194a05aedc04514a02e7c112c2d8acb045d39e75e5593f90/gamsapi-54.6.0-cp315-cp315-macosx_13_0_arm64.whl", hash = "sha256:d395bf396f63bab182a1a4a1aca5ebba1d0858edc41ec1434aaf9155bde4ff39", size = 1195714, upload-time = "2026-10-15T14:36:48.416Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/28/212736601f78cdeee0bbb7490c54ddc7cd5291669114cd131f978b71b647/gamsapi-54.6.0-cp315-cp315-macosx_13_0_x86_64.whl", hash = "sha256:4b0a3f52df757ee3737f7743efdf99a23d7e6a418b3a1ca398aaa619cd9b5f74", size = 1226931, upload-time = "2026-10-15T14:36:53.855Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/7c/6bba9f981f6ca7e744b562f59abc3d1883e66536521812620ec14e67e714/gamsapi-54.6.0-cp315-cp315-manylinux_2_28_aarch64.whl", hash = "sha256:1c009ed1b38e01d40dd12e14dc527dbd66a68129eed9d028cca40f18519a7f6e", size = 1233556, upload-time = "2026-10-15T14:43:25.675Z" },
+    { url = "https://files.pythonhosted.org/packages/84/1e/dea0d3e76e867423e2f8b5d6e90b1f26ccf5a1a8633ab71b870d5bc95de0/gamsapi-54.6.0-cp315-cp315-manylinux_2_28_x86_64.whl", hash = "sha256:6ea41f3a3b297e7a99d6fe74b7b54274057c67e38fe0e6b34de8aa721d1cf740", size = 1260172, upload-time = "2026-10-15T14:37:30.055Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/be/ca8584c12599bcef51fcf5ab9eae4701c550bb8a997d8925f8694d25030d/gamsapi-54.6.0-cp315-cp315-win_amd64.whl", hash = "sha256:bffe440652208cbe4f253d94ece9b926c880342d5cd721c4b449f5d50d216336", size = 1712607, upload-time = "2026-10-15T14:37:27.509Z" },
+]
+
+[[package]]
+name = "gamspy"
+version = "1.29.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "gamsapi" },
+    { name = "gamspy-base" },
+    { name = "pandas" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/31/8f/c4ecc5ad15e3dc5ab6b30f2cb594cf8f58c788475d8df1de4b83c62e9da4/gamspy-1.29.1.tar.gz", hash = "sha256:6d03b2b85bba5672668457b58bfa6f2deaa0187a52cf776d3470126ad24da7cd", size = 344234, upload-time = "2026-10-16T10:14:02.744Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/c0/da34712b62a75caf35e569caaeec0760ab48a6bdff50daef641f82ceae22/gamspy-1.29.1-py3-none-any.whl", hash = "sha256:62165450571721d02a2fbad99ce7993dd55917cacccf6a3a87e7577197c87de3", size = 406293, upload-time = "2026-10-16T10:14:01.066Z" },
+]
+
+[[package]]
+name = "gamspy-base"
+version = "54.6.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ea/19/66f0c92c560d48e2976fa27064e3c2bac89a5c082876c31ab7ad7c2ada76/gamspy_base-54.6.0-py3-none-macosx_13_0_arm64.whl", hash = "sha256:bdb13465ae8e9e528ca0d66eb853f67d5ff37885f14f88957a61dc3b7c30fd4b", size = 28842625, upload-time = "2026-10-15T14:44:34.5Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/9c/bc2e846a14c4735241a86a442c9b1e404df534e27c51b5944ea80747d2de/gamspy_base-54.6.0-py3-none-macosx_13_0_x86_64.whl", hash = "sha256:a1a0aa316ff8a5c63e024ac802b6991fe9c5e53717116cb08862c1a015109f33", size = 36189726, upload-time = "2026-10-15T14:44:45.309Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/66/4d6baebb63eef22ff91dff0e65ba0bbdfb8157bf5c405799a7573fceb0e0/gamspy_base-54.6.0-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:4b250dd7777212d25ad8b97d0bdffe9fbde7df3e6adb07940955a1f00e29f037", size = 31788785, upload-time = "2026-10-15T14:44:50.366Z" },
+    { url = "https://files.pythonhosted.org/packages/69/98/6187828a6678121e4efaa6645bbc2317ac8be892da149ee7b493c2a48480/gamspy_base-54.6.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:fd48586de88fcb7fdb34d88977a10b59aede867afd2ce35b08c34db1a9e9159e", size = 36285881, upload-time = "2026-10-15T14:44:39.665Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/34/721379a9dd3508164962706d5a131ba371302c32bd903174ac62f9ef646f/gamspy_base-54.6.0-py3-none-win_amd64.whl", hash = "sha256:6a6129513ca579d654ee50a8ddddd83ac5d86f600965a73fd0f4e3b3310baf45", size = 38599099, upload-time = "2026-10-15T14:44:28.063Z" },
+]
+
+[[package]]
 name = "google-adk"
 version = "2.9.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1778,6 +1836,7 @@ dependencies = [
     { name = "aiosqlite" },
     { name = "cloudpickle" },
     { name = "fastapi" },
+    { name = "gamspy" },
     { name = "google-adk" },
     { name = "gurobipy" },
     { name = "highspy" },
@@ -1808,6 +1867,7 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "cloudpickle", specifier = ">=3.1.2" },
     { name = "fastapi", specifier = ">=0.136.1" },
+    { name = "gamspy", specifier = ">=1.29.1" },
     { name = "google-adk", specifier = ">=2.9.2" },
     { name = "gurobipy", specifier = ">=13.0.1" },
     { name = "highspy", specifier = ">=1.15.1" },

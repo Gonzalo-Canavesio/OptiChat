@@ -8,6 +8,7 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "cloudpickle>=3.1.2",
     "fastapi>=0.136.1",
+    "gamspy>=1.29.1",
     "google-adk>=2.9.2",
     "gurobipy>=13.0.1",
     "highspy>=1.15.1",

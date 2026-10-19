@@ -280,6 +280,8 @@ def format_hierarchical_components(models_dictionary: dict) -> dict:
     for comp_name, comp_data in model_data.items():
         if not isinstance(comp_data, dict):
             continue
+        if comp_name.endswith("[*]"):
+            continue  # shared definition of an indexed GAMSPy equation, not a component
 
         comp_type = comp_data.get("component_type", "unknown")
 

@@ -36,6 +36,11 @@ def load_model(version: str, models_dictionary: dict):
             ) from e
 
     info = models_dictionary[version]
+    if info.get("modeling_language") == "GAMSPy":
+        raise NotImplementedError(
+            f"Model '{version}' is a GAMSPy model. Only reading its components is "
+            "supported for GAMSPy so far; it cannot be re-solved or modified."
+        )
     local_path_to_object = info["local_path_to_object"]
     sol_status = info["obj"].get('sol_status', 'unknown')
     objval = info["obj"].get('value', 'unknown')

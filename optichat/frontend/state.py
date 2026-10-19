@@ -130,11 +130,3 @@ def clean_session_state_for_profile_form() -> None:
     ]
     for key in keys_to_remove:
         st.session_state.pop(key, None)
-
-
-def clean_session_state_for_chat_form() -> None:
-    keys_to_remove = [
-        "modeling_language_selectbox",
-    ]
-    for key in keys_to_remove:
-        st.session_state.pop(key, None)

@@ -49,15 +49,13 @@ def create_chat(
     model_file: UploadedFile,
     data_files: list[UploadedFile] | None,
     model_paper: UploadedFile | None,
-    modeling_language: str,
     profile_label: str,
     solver: str,
     chat_name: str = "",
 ) -> ChatInfo:
     payload = {
         "profile_label": profile_label,
-        "modeling_language": modeling_language,
-        "solver": "gurobi" if modeling_language == "gurobipy" else solver,
+        "solver": solver,
         "chat_name": chat_name,
     }
 

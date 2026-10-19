@@ -15,6 +15,15 @@ SOLVERS: dict[str, tuple[str, str]] = {
 }
 DEFAULT_SOLVER = "gurobi"
 
+# label (lowercase) -> GAMS solver name, for GAMSPy models (GAMS has no GLPK)
+GAMSPY_SOLVERS: dict[str, str] = {
+    "gurobi": "gurobi",
+    "cplex": "cplex",
+    "cbc": "cbc",
+    "highs": "highs",
+    "scip": "scip",
+}
+
 _active_solver: ContextVar[str] = ContextVar("optichat_solver", default=DEFAULT_SOLVER)
 
 
@@ -47,6 +56,17 @@ def get_active_solver() -> str:
 
 def get_solver_pyomo_name() -> str:
     return SOLVERS[get_active_solver()][0]
+
+
+def get_solver_gamspy_name() -> str:
+    """GAMS solver name for the active solver, or SolverNotAvailableError."""
+    active = get_active_solver()
+    if active not in GAMSPY_SOLVERS:
+        raise SolverNotAvailableError(
+            f"The solver '{active}' cannot be used with GAMSPy models. "
+            f"Choose one of: {', '.join(sorted(GAMSPY_SOLVERS))}."
+        )
+    return GAMSPY_SOLVERS[active]
 
 
 class _Solver:

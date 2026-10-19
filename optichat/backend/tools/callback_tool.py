@@ -17,7 +17,7 @@ from google.adk.models import LlmResponse, LlmRequest
 from optichat.backend.config import workspace
 from optichat.backend.config.constants import (IS_SESSION_INITIALIZED, PERSISTENT_STATES, TEMPORARY_STATES,
                                        CFG, EXPERT_AGENT_USES, EXPERT_AGENT_MAX_USES, EXPERT_AGENT_START_TIME,
-                                       MODELS_DICTIONARY, MODEL_VERSIONS, HISTORICAL_MODELS_METADATA, MODEL_LOAD_ERRORS,
+                                       MODELS_DICTIONARY, MODEL_VERSIONS, HISTORICAL_MODELS_METADATA, MODEL_LOAD_ERRORS, CHAT_MODELING_LANGUAGE,
                                        IS_MODELS_DICTIONARY_AVAILABLE,
                                        NEED_SYNTHETIC_PAPER,
                                        MODEL_FOR_PAPER_GENERATION, USER_QUERY,
@@ -30,6 +30,7 @@ from optichat.backend.config.constants import (IS_SESSION_INITIALIZED, PERSISTEN
                                        OUTPUT_KEY_EXPERT_AGENT, OUTPUT_KEY_ROOT_AGENT)
 from optichat.backend.tools import timing_tracker
 from optichat.backend.tools.extract_tool import restore_model_object, save_model_object, extract_model_info, _solve_model
+from optichat.backend.tools.gamspy_extractor import extract_gamspy_model_info, solve_gamspy_model
 from optichat.backend.tools.metadata_store import (load_metadata, save_metadata, save_model_data,
                                            add_model_to_metadata)
 from optichat.backend.agents.expert.prompt import get_expert_agent_prompt
@@ -181,6 +182,10 @@ def initialize_session(callback_context: CallbackContext):
         callback_context.state[CFG] = cfg
         models_dictionary, current_model_versions, historical_metadata, load_errors = _init_models(cfg)
         callback_context.state[MODEL_LOAD_ERRORS] = load_errors
+        if current_model_versions:
+            callback_context.state[CHAT_MODELING_LANGUAGE] = (
+                models_dictionary[current_model_versions[0]]["modeling_language"]
+            )
         
         # Available if we have loaded models OR historical metadata (lazy loading)
         is_model_dictionary_available = len(models_dictionary) > 0 or len(historical_metadata) > 0
@@ -313,24 +318,42 @@ def _find_and_copy_source_file(version_name: str, cfg: dict) -> Optional[str]:
         return None
 
 def _find_model(module, py_file_path: str):
-    """The module's `model` if it is a ConcreteModel, else its only ConcreteModel."""
+    """
+    The model a .py file defines, and its modeling language ("Pyomo" or "GAMSPy").
+
+    Pyomo: the module's `model` if it is a ConcreteModel, else its only ConcreteModel.
+    GAMSPy: the module's only Model.
+    """
+    import gamspy as gp
     import pyomo.environ as pyo
 
+    file_name = os.path.basename(py_file_path)
+    values = vars(module).values()
+    pyomo_models = {id(v): v for v in values if isinstance(v, pyo.ConcreteModel)}
+    gamspy_models = {id(v): v for v in values if isinstance(v, gp.Model)}
+
+    if pyomo_models and gamspy_models:
+        raise ValueError(f"{file_name} defines both Pyomo and GAMSPy models; it must define one model.")
+    if gamspy_models:
+        if len(gamspy_models) > 1:
+            raise ValueError(f"{file_name} must define one GAMSPy Model; found {len(gamspy_models)}.")
+        return next(iter(gamspy_models.values())), "GAMSPy"
     candidate = getattr(module, "model", None)
     if isinstance(candidate, pyo.ConcreteModel):
-        return candidate
-    models = [v for v in vars(module).values() if isinstance(v, pyo.ConcreteModel)]
-    if len(models) == 1:
-        return models[0]
+        return candidate, "Pyomo"
+    if len(pyomo_models) == 1:
+        return next(iter(pyomo_models.values())), "Pyomo"
+    if not pyomo_models:
+        raise ValueError(f"{file_name} must define a Pyomo ConcreteModel or a GAMSPy Model; found neither.")
     raise ValueError(
-        f"{os.path.basename(py_file_path)} must define one Pyomo ConcreteModel "
-        f"(preferably named `model`); found {len(models)}."
+        f"{file_name} defines {len(pyomo_models)} Pyomo ConcreteModels; "
+        "name the one to analyze `model`."
     )
 
 
 def _load_model_from_py(py_file_path: str):
     """
-    Load the Pyomo model defined by a .py file.
+    Load the optimization model defined by a .py file.
 
     The file runs from its own directory (cwd and sys.path), so it reads the data
     files next to it with relative paths, in whatever format and way it chooses;
@@ -340,7 +363,7 @@ def _load_model_from_py(py_file_path: str):
         py_file_path: Path to the .py file containing the model definition
 
     Returns:
-        Tuple of (model, version_name)
+        Tuple of (model, version_name, modeling_language)
     """
     import importlib.util
     import sys
@@ -375,10 +398,10 @@ def _load_model_from_py(py_file_path: str):
             if os.path.abspath(module_file).startswith(base_dir + os.sep):
                 del sys.modules[name]
 
-    model = _find_model(loaded_module, py_file_path)
+    model, modeling_language = _find_model(loaded_module, py_file_path)
     version = os.path.splitext(os.path.basename(py_file_path))[0]
 
-    return model, version
+    return model, version, modeling_language
 
 
 def _describe_load_error(error: Exception, resource_path: str) -> str:
@@ -431,20 +454,28 @@ def _init_models(cfg: dict):
                     # OLD PATH: Load from pickle
                     logger.info(f"Loading model from pickle: {resource_path}")
                     model, version = restore_model_object(resource_path)
+                    modeling_language = "Pyomo"
                 elif resource_path.endswith(".py"):
                     # The model reads its own data files from its directory
                     logger.info(f"Loading model from Python file: {resource_path}")
-                    model, version = _load_model_from_py(resource_path)
+                    model, version, modeling_language = _load_model_from_py(resource_path)
                 else:
                     raise ValueError(f"Unsupported model file format: {resource_path}. Must be .pkl or .py")
-                
-                # Solve model (same for both formats)
-                model, termination_condition = _solve_model(model, is_lp=is_lp, is_solved=is_solved)
+                logger.info(f"Detected modeling language: {modeling_language}")
 
-                # Extract model information
-                info = extract_model_info(model, termination_condition=termination_condition)
-                local_path_to_object = save_model_object(model, version)
-                info.update({"local_path_to_object": local_path_to_object})
+                if modeling_language == "GAMSPy":
+                    # GAMSPy containers cannot be pickled, so only the extracted info is kept
+                    termination_condition = solve_gamspy_model(model)
+                    info = extract_gamspy_model_info(model, termination_condition)
+                else:
+                    # Solve model (same for both formats)
+                    model, termination_condition = _solve_model(model, is_lp=is_lp, is_solved=is_solved)
+
+                    # Extract model information
+                    info = extract_model_info(model, termination_condition=termination_condition)
+                    local_path_to_object = save_model_object(model, version)
+                    info.update({"local_path_to_object": local_path_to_object})
+                info["modeling_language"] = modeling_language
 
                 # NEW: Copy .py source file to tmp if it exists
                 source_py_path = _find_and_copy_source_file(version, cfg)
@@ -1248,6 +1279,11 @@ def diagnose_if_infeasible(callback_context: CallbackContext):
     # Check model status
     model_info = models_dict.get(model_name, {})
     status = model_info.get("obj", {}).get("sol_status", "unknown")
+
+    if model_info.get("modeling_language") == "GAMSPy":
+        logger.info("[DIAGNOSE_IF_INFEASIBLE] Infeasibility diagnosis is not available for GAMSPy models")
+        callback_context.state[HAS_INFEASIBILITY_DIAGNOSIS] = False
+        return None
 
     logger.info(f"[DIAGNOSE_IF_INFEASIBLE] Model '{model_name}' status: {status}")
 
