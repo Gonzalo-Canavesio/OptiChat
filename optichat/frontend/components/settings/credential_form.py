@@ -8,7 +8,10 @@ from optichat.llm.credentials import (
 )
 from optichat.llm.models import LLMCredential
 from optichat.llm.profiles import get_llm_profiles_using_credential
-from optichat.llm.providers import get_available_provider_names
+from optichat.llm.providers import (
+    ProviderVerificationError,
+    get_available_provider_names,
+)
 
 
 def _display_form_instructions(is_update: bool) -> None:
@@ -110,7 +113,12 @@ def _handle_form_submission_llm_credential(
             icon=":material/check_circle:",
         )
     else:
-        add_llm_credential(credential)
+        try:
+            with st.spinner("Verifying API key..."):
+                add_llm_credential(credential)
+        except ProviderVerificationError as e:
+            st.error(f"The API key was not saved. {e}")
+            return False
         queue_feedback(
             f"API key **{credential.label}** added successfully!",
             icon=":material/check_circle:",

@@ -1,14 +1,20 @@
+from optichat.llm.catalog import fetch_agent_models
 from optichat.llm.models import LLMCredential
 from optichat.llm.profiles import (
     remove_credential_from_profiles,
     update_credential_label_in_profiles,
 )
+from optichat.llm.providers import ProviderVerificationError
 from optichat.llm.store import (
     CREDENTIALS_FILE,
     generate_valid_label,
     load_items,
     save_items,
 )
+
+
+class NoAgentModelsError(ProviderVerificationError):
+    """The key works, but none of the models it can use can run the agents."""
 
 
 def _get_llm_credentials_from_file() -> list[LLMCredential]:
@@ -44,6 +50,16 @@ def get_llm_credential_by_label(label: str | None) -> LLMCredential | None:
 
 
 def add_llm_credential(credential: LLMCredential):
+    """Save `credential` if its key works and gives access to an agent model.
+
+    Raises ProviderVerificationError otherwise (NoAgentModelsError when the key
+    works but none of its models can run the agents), saving nothing.
+    """
+    if not fetch_agent_models(credential.provider, credential.api_key):
+        raise NoAgentModelsError(
+            f"This {credential.provider} API key has no models the agents can use "
+            "(chat models that support tool calling)."
+        )
     credential.label = _get_valid_label_for_credential(credential)
 
     credentials = _get_llm_credentials_from_file()

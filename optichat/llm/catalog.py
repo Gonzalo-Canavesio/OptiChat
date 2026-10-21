@@ -1,18 +1,56 @@
-import os
-from unittest.mock import patch
+from functools import lru_cache
 
-from litellm import AuthenticationError, litellm
+from litellm import litellm
 
 from optichat.llm.models import LLMCredential
-from optichat.llm.providers import get_env_var_name_for_provider
+from optichat.llm.providers import ProviderVerificationError, fetch_provider_models
+
+
+# Streamlit reruns the profile form on every interaction, so the list is cached.
+# Failures raise and are therefore not cached.
+@lru_cache(maxsize=32)
+def _cached_models(provider: str, api_key: str) -> tuple[str, ...]:
+    return tuple(fetch_provider_models(provider, api_key))
+
+
+_AGENT_MODES = ("chat", "responses")
+
+
+def _litellm_model_info(model: str) -> dict:
+    """Look `model` up in LiteLLM's model map, or return {} if it isn't there.
+
+    Some providers (e.g. Anthropic) are mapped without the `provider/` prefix our
+    ids carry, so the bare name is tried too as long as its provider matches.
+    """
+    if model in litellm.model_cost:
+        return litellm.model_cost[model]
+    provider, _, bare_model = model.partition("/")
+    info = litellm.model_cost.get(bare_model, {}) if bare_model else {}
+    return info if info.get("litellm_provider") == provider else {}
+
+
+def _can_run_agents(model: str) -> bool:
+    """Whether LiteLLM knows `model` as a chat model that accepts tools."""
+    info = _litellm_model_info(model)
+    return info.get("mode") in _AGENT_MODES and bool(
+        info.get("supports_function_calling")
+    )
+
+
+def fetch_agent_models(provider: str, api_key: str) -> list[str]:
+    """The models `api_key` can use that the agents can run on.
+
+    Models LiteLLM doesn't know are left out, since nothing says they accept tools.
+    Raises ProviderVerificationError if the key can't be verified.
+    """
+    return [m for m in _cached_models(provider, api_key) if _can_run_agents(m)]
 
 
 def get_available_llm_models(credential: LLMCredential) -> list[str]:
-    temp_env_var = {
-        get_env_var_name_for_provider(credential.provider): credential.api_key
-    }
-    with patch.dict(os.environ, temp_env_var):
-        return litellm.get_valid_models(check_provider_endpoint=True)
+    try:
+        return fetch_agent_models(credential.provider, credential.api_key)
+    except ProviderVerificationError:
+        return []
 
 
 # OpenAI model families whose function calling only works through the Responses
@@ -28,35 +66,3 @@ def resolve_litellm_model(provider: str | None, model: str) -> str:
     if mode == "responses" or model.startswith(_OPENAI_RESPONSES_ONLY_PREFIXES):
         return f"openai/responses/{model}"
     return model
-
-
-_PROBE_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "ping",
-        "description": "Does nothing.",
-        "parameters": {"type": "object", "properties": {}},
-    },
-}
-
-
-def get_model_validation_error(credential: LLMCredential, model: str) -> str | None:
-    """Return why `model` can't be used with `credential`'s key, or None if it works."""
-    messages = [{"role": "user", "content": "Hey, how's it going?"}]
-    try:
-        # max_completion_tokens (not max_tokens) because newer models reject the
-        # latter; it is at least 16 because some models refuse smaller limits and
-        # reasoning models need headroom to produce any output.
-        litellm.completion(
-            model=resolve_litellm_model(credential.provider, model),
-            messages=messages,
-            api_key=credential.api_key,
-            # The agents rely on function calling, so the model must accept tools.
-            tools=[_PROBE_TOOL],
-            max_completion_tokens=256,
-        )
-    except AuthenticationError:
-        return "The API key was rejected by the provider."
-    except Exception as e:
-        return str(e).replace(credential.api_key, "***").strip()
-    return None

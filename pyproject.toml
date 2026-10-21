@@ -12,6 +12,7 @@ dependencies = [
     "google-adk>=2.9.2",
     "gurobipy>=13.0.1",
     "highspy>=1.15.1",
+    "httpx>=0.28.1",
     "langchain>=1.2.15",
     "langchain-experimental>=0.4.1",
     "litellm>=1.85.0",
@@ -47,6 +48,10 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
 
 [tool.setuptools]
 packages = ["optichat"]

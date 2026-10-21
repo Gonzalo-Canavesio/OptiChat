@@ -1,6 +1,6 @@
 import streamlit as st
 
-from optichat.frontend.api.client import fetch_chat, fetch_chats
+from optichat.frontend.api.client import BackendError, fetch_chat, fetch_chats
 from optichat.frontend.components.chat import render_create_chat_dialog
 from optichat.frontend.state import AVAILABLE_SOLVERS, state
 from optichat.llm.profiles import get_llm_profiles
@@ -38,7 +38,12 @@ def render_sidebar() -> None:
         if state.selected_profile and state.selected_solver:
             render_create_chat_dialog()
 
-    chats = fetch_chats()
+    try:
+        chats = fetch_chats()
+    except BackendError as e:
+        st.error(f"Couldn't load your chats: {e}")
+        chats = []
+
     for chat in chats:
         if st.button(
             chat["name"],
@@ -48,5 +53,9 @@ def render_sidebar() -> None:
             if state.current_chat and chat["id"] == state.current_chat["id"]
             else "tertiary",
         ):
-            state.current_chat = fetch_chat(chat["id"]) or chat
-            st.rerun()
+            try:
+                state.current_chat = fetch_chat(chat["id"])
+            except BackendError as e:
+                st.error(f"Couldn't open this chat: {e}")
+            else:
+                st.rerun()

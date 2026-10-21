@@ -1,17 +1,19 @@
-import requests
+import httpx
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from optichat.frontend.state import ChatInfo
 
 API_BASE_URL = "http://localhost:8000"
 
+_client = httpx.Client(base_url=API_BASE_URL)
+
 
 class BackendError(Exception):
     """The backend rejected or failed a request; the message is meant for the user."""
 
 
-def _raise_for_error(response: requests.Response) -> None:
-    if response.ok:
+def _raise_for_error(response: httpx.Response) -> None:
+    if response.is_success:
         return
     try:
         detail = response.json().get("detail")
@@ -22,27 +24,22 @@ def _raise_for_error(response: requests.Response) -> None:
 
 def _request(method: str, path: str, **kwargs) -> dict | list:
     try:
-        response = requests.request(method, f"{API_BASE_URL}{path}", **kwargs)
-    except requests.RequestException as e:
+        response = _client.request(method, path, **kwargs)
+    except httpx.HTTPError as e:
         raise BackendError(f"Could not reach the backend at {API_BASE_URL}: {e}") from e
     _raise_for_error(response)
-    return response.json()
+    try:
+        return response.json()
+    except ValueError as e:
+        raise BackendError("The backend sent a response that is not valid JSON.") from e
 
 
 def fetch_chats() -> list[ChatInfo]:
-    try:
-        response = requests.get(f"{API_BASE_URL}/chats", timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException:
-        return []
+    return _request("GET", "/chats", timeout=10)
 
 
-def fetch_chat(chat_id: str) -> ChatInfo | None:
-    try:
-        return _request("GET", f"/chats/{chat_id}", timeout=30)
-    except BackendError:
-        return None
+def fetch_chat(chat_id: str) -> ChatInfo:
+    return _request("GET", f"/chats/{chat_id}", timeout=30)
 
 
 def create_chat(
