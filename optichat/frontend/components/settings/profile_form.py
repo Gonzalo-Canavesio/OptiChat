@@ -4,32 +4,32 @@ import streamlit as st
 
 from optichat.frontend.state import clean_session_state_for_profile_form, queue_feedback
 from optichat.llm.catalog import get_available_llm_models, get_model_validation_error
-from optichat.llm.models import AgentConfig, LLMProviderConfig, ProfileConfig
+from optichat.llm.credentials import get_llm_credentials
+from optichat.llm.models import AgentConfig, LLMCredential, ProfileConfig
 from optichat.llm.profiles import (
     add_llm_profile,
     remove_llm_profile,
     update_llm_profile,
 )
-from optichat.llm.providers import get_configured_llm_providers
 
 
-def _get_provider_index(
-    configured_providers: list[LLMProviderConfig], provider_label: str | None
+def _get_credential_index(
+    credentials: list[LLMCredential], credential_label: str | None
 ) -> int | None:
-    if not provider_label:
+    if not credential_label:
         return None
-    for i, p in enumerate(configured_providers):
-        if p.label == provider_label:
+    for i, c in enumerate(credentials):
+        if c.label == credential_label:
             return i
     return None
 
 
 def _get_model_index(
-    provider: LLMProviderConfig | None, model_name: str | None
+    credential: LLMCredential | None, model_name: str | None
 ) -> int | None:
-    if not provider or not model_name:
+    if not credential or not model_name:
         return None
-    models = get_available_llm_models(provider)
+    models = get_available_llm_models(credential)
     try:
         return models.index(model_name)
     except ValueError:
@@ -45,7 +45,7 @@ def _infer_profile_mode(existing_profile: ProfileConfig | None) -> str:
             existing_profile.generator_agent,
         ]
         is_simple = all(
-            a.provider_label == agents[0].provider_label
+            a.credential_label == agents[0].credential_label
             and a.llm_model == agents[0].llm_model
             and getattr(a, "temperature", None) is None
             and getattr(a, "max_tokens", None) is None
@@ -57,91 +57,89 @@ def _infer_profile_mode(existing_profile: ProfileConfig | None) -> str:
 
 def _render_simple_mode_fields(
     existing_profile: ProfileConfig | None,
-) -> tuple[LLMProviderConfig | None, str | None]:
+) -> tuple[LLMCredential | None, str | None]:
     is_simple_profile = _infer_profile_mode(existing_profile) == "Simple"
 
     if existing_profile and is_simple_profile:
-        initial_provider_idx = _get_provider_index(
-            get_configured_llm_providers(),
-            existing_profile.root_agent.provider_label,
+        initial_credential_idx = _get_credential_index(
+            get_llm_credentials(),
+            existing_profile.root_agent.credential_label,
         )
     else:
-        initial_provider_idx = None
+        initial_credential_idx = None
 
-    selected_provider = st.selectbox(
-        "LLM Provider (Required)",
-        options=get_configured_llm_providers(),
-        format_func=lambda p: f"{p.label} ({p.type})",
-        index=initial_provider_idx,
-        key="simple_provider_selectbox",
-        help="Choose the LLM provider for your optimization problem.",
+    selected_credential = st.selectbox(
+        "API Key (Required)",
+        options=get_llm_credentials(),
+        format_func=lambda c: f"{c.label} ({c.provider})",
+        index=initial_credential_idx,
+        key="simple_credential_selectbox",
+        help="Choose the API key the agents will use.",
     )
 
-    assert isinstance(selected_provider, LLMProviderConfig) or selected_provider is None
+    assert isinstance(selected_credential, LLMCredential) or selected_credential is None
 
-    has_matching_provider = bool(
+    has_matching_credential = bool(
         existing_profile
-        and selected_provider
-        and selected_provider.label == existing_profile.root_agent.provider_label
+        and selected_credential
+        and selected_credential.label == existing_profile.root_agent.credential_label
     )
-    if has_matching_provider and is_simple_profile and existing_profile:
+    if has_matching_credential and is_simple_profile and existing_profile:
         initial_model_idx = _get_model_index(
-            selected_provider, existing_profile.root_agent.llm_model
+            selected_credential, existing_profile.root_agent.llm_model
         )
     else:
         initial_model_idx = None
 
     selected_model = st.selectbox(
         "Select LLM model for the agents (Required)",
-        options=get_available_llm_models(selected_provider)
-        if selected_provider
+        options=get_available_llm_models(selected_credential)
+        if selected_credential
         else [],
         key="simple_model_selectbox",
         index=initial_model_idx,
         help="Choose the LLM model for the agents.",
     )
 
-    return selected_provider, selected_model
+    return selected_credential, selected_model
 
 
 def _render_advanced_mode_agent_fields(
     agent_label: str, existing_agent: AgentConfig | None
-) -> tuple[LLMProviderConfig | None, str | None, float | None, int | None]:
-    initial_provider_idx = (
-        _get_provider_index(
-            get_configured_llm_providers(), existing_agent.provider_label
-        )
+) -> tuple[LLMCredential | None, str | None, float | None, int | None]:
+    initial_credential_idx = (
+        _get_credential_index(get_llm_credentials(), existing_agent.credential_label)
         if existing_agent
         else None
     )
 
-    selected_provider = st.selectbox(
-        f"LLM Provider for {agent_label} (Required)",
-        options=get_configured_llm_providers(),
-        format_func=lambda p: f"{p.label} ({p.type})",
-        index=initial_provider_idx,
-        help=f"Choose the LLM provider for the {agent_label}.",
-        key=f"{agent_label}_provider_selectbox",
+    selected_credential = st.selectbox(
+        f"API Key for {agent_label} (Required)",
+        options=get_llm_credentials(),
+        format_func=lambda c: f"{c.label} ({c.provider})",
+        index=initial_credential_idx,
+        help=f"Choose the API key the {agent_label} will use.",
+        key=f"{agent_label}_credential_selectbox",
     )
 
-    assert isinstance(selected_provider, LLMProviderConfig) or selected_provider is None
+    assert isinstance(selected_credential, LLMCredential) or selected_credential is None
 
-    has_matching_provider = bool(
+    has_matching_credential = bool(
         existing_agent
-        and selected_provider
-        and selected_provider.label == existing_agent.provider_label
+        and selected_credential
+        and selected_credential.label == existing_agent.credential_label
     )
-    if has_matching_provider and existing_agent:
+    if has_matching_credential and existing_agent:
         initial_model_idx = _get_model_index(
-            selected_provider, existing_agent.llm_model
+            selected_credential, existing_agent.llm_model
         )
     else:
         initial_model_idx = None
 
     selected_model = st.selectbox(
         f"Select LLM model for {agent_label} (Required)",
-        options=get_available_llm_models(selected_provider)
-        if selected_provider
+        options=get_available_llm_models(selected_credential)
+        if selected_credential
         else [],
         index=initial_model_idx,
         help=f"Choose the LLM model for the {agent_label}.",
@@ -168,7 +166,12 @@ def _render_advanced_mode_agent_fields(
         key=f"{agent_label}_max_tokens_input",
     )
 
-    return selected_provider, selected_model, selected_temperature, selected_max_tokens
+    return (
+        selected_credential,
+        selected_model,
+        selected_temperature,
+        selected_max_tokens,
+    )
 
 
 def _render_advanced_mode_fields(
@@ -198,14 +201,14 @@ def _render_advanced_mode_fields(
         with current_column:
             st.subheader(f'"{agent_label}" configuration')
             (
-                selected_provider,
+                selected_credential,
                 selected_model,
                 selected_temperature,
                 selected_max_tokens,
             ) = _render_advanced_mode_agent_fields(agent_label, existing_agent)
 
             selected_dict[agent_label] = {
-                "provider": selected_provider,
+                "credential": selected_credential,
                 "model": selected_model,
                 "temperature": selected_temperature,
                 "max_tokens": selected_max_tokens,
@@ -216,23 +219,23 @@ def _render_advanced_mode_fields(
 
 def _build_simple_profile(
     profile_label: str,
-    selected_provider: LLMProviderConfig | None,
+    selected_credential: LLMCredential | None,
     selected_model: str | None,
 ) -> ProfileConfig | None:
-    if not selected_provider or not selected_model:
-        st.error("Please provide both the LLM provider and model before saving.")
+    if not selected_credential or not selected_model:
+        st.error("Please provide both the API key and model before saving.")
         return None
 
-    error = get_model_validation_error(selected_provider, selected_model)
+    error = get_model_validation_error(selected_credential, selected_model)
     if error:
         st.error(
-            "The selected LLM provider and model combination is invalid.\n\n"
+            "The selected API key and model combination is invalid.\n\n"
             f"Provider error: {error}"
         )
         return None
 
     agent_config = AgentConfig(
-        provider_label=selected_provider.label,
+        credential_label=selected_credential.label,
         llm_model=selected_model,
     )
     return ProfileConfig(
@@ -253,20 +256,20 @@ def _build_advanced_profile(
         return None
 
     for agent_label, agent_config in selected_dict.items():
-        provider = agent_config.get("provider")
+        credential = agent_config.get("credential")
         model = agent_config.get("model")
 
-        if not provider or not model:
+        if not credential or not model:
             st.error(
-                f"Please provide both the LLM provider and model for {agent_label} "
+                f"Please provide both the API key and model for {agent_label} "
                 "before saving."
             )
             return None
 
-        error = get_model_validation_error(provider, model)
+        error = get_model_validation_error(credential, model)
         if error:
             st.error(
-                f"The selected LLM provider and model combination for {agent_label} is "
+                f"The selected API key and model combination for {agent_label} is "
                 f"invalid.\n\nProvider error: {error}"
             )
             return None
@@ -274,7 +277,7 @@ def _build_advanced_profile(
     def _make_agent(name: str) -> AgentConfig:
         cfg = selected_dict[name]
         return AgentConfig(
-            provider_label=cfg["provider"].label,
+            credential_label=cfg["credential"].label,
             llm_model=cfg["model"],
             temperature=cfg["temperature"],
             max_tokens=cfg["max_tokens"],
@@ -310,7 +313,7 @@ def _save_profile_and_notify(
 
 def _handle_form_submission_llm_profile(
     mode: str,
-    selected_provider: LLMProviderConfig | None,
+    selected_credential: LLMCredential | None,
     selected_model: str | None,
     selected_dict: dict[str, dict[str, Any]] | None,
     existing_profile: ProfileConfig | None,
@@ -323,7 +326,7 @@ def _handle_form_submission_llm_profile(
     profile = None
     if mode == "Simple":
         profile = _build_simple_profile(
-            profile_label, selected_provider, selected_model
+            profile_label, selected_credential, selected_model
         )
     elif mode == "Advanced":
         profile = _build_advanced_profile(profile_label, selected_dict)
@@ -346,9 +349,11 @@ def render_llm_profile_form(
         required=True,
         width="stretch",
     )
-    selected_provider, selected_model, selected_dict = None, None, None
+    selected_credential, selected_model, selected_dict = None, None, None
     if mode == "Simple":
-        selected_provider, selected_model = _render_simple_mode_fields(existing_profile)
+        selected_credential, selected_model = _render_simple_mode_fields(
+            existing_profile
+        )
     elif mode == "Advanced":
         selected_dict = _render_advanced_mode_fields(existing_profile)
 
@@ -361,7 +366,7 @@ def render_llm_profile_form(
         if st.form_submit_button("Save", type="primary", width="stretch"):
             if _handle_form_submission_llm_profile(
                 mode,
-                selected_provider,
+                selected_credential,
                 selected_model,
                 selected_dict,
                 existing_profile,

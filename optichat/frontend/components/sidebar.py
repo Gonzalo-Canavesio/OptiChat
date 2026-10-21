@@ -16,7 +16,7 @@ def render_sidebar() -> None:
         help="Choose the LLM profile for your optimization problem.",
     )
 
-    if st.button("Manage Providers & Profiles", width="stretch"):
+    if st.button("Manage API Keys & Profiles", width="stretch"):
         state.current_view = "settings"
         st.rerun()
 

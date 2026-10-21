@@ -79,7 +79,7 @@ CLAUDE.md
 
 # Local LLM configuration (contains API keys)
 /.llm_profiles.yaml
-/.llm_providers.yaml
+/.llm_credentials.yaml
 
 # Chats database and uploaded files
 /.optichat/

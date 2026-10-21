@@ -1,4 +1,4 @@
-from optichat.llm.models import LLMProviderConfig, ProfileConfig
+from optichat.llm.models import LLMCredential, ProfileConfig
 from optichat.llm.store import (
     PROFILES_FILE,
     generate_valid_label,
@@ -17,24 +17,24 @@ def _save_configured_llm_profiles_to_file(profiles: list[ProfileConfig]):
     save_items(PROFILES_FILE, "profiles", [p.model_dump() for p in profiles])
 
 
-def update_provider_label_in_profiles(old_label: str, new_label: str):
+def update_credential_label_in_profiles(old_label: str, new_label: str):
     profiles = _get_llm_profiles_from_file()
     for profile in profiles:
         for field in _AGENT_FIELDS:
             agent = getattr(profile, field)
-            if agent.provider_label == old_label:
-                agent.provider_label = new_label
+            if agent.credential_label == old_label:
+                agent.credential_label = new_label
 
     _save_configured_llm_profiles_to_file(profiles)
 
 
-def remove_provider_from_profiles(provider_label: str):
+def remove_credential_from_profiles(credential_label: str):
     profiles = _get_llm_profiles_from_file()
     for profile in profiles:
         for field in _AGENT_FIELDS:
             agent = getattr(profile, field)
-            if agent.provider_label == provider_label:
-                agent.provider_label = ""
+            if agent.credential_label == credential_label:
+                agent.credential_label = ""
                 agent.llm_model = ""
 
     _save_configured_llm_profiles_to_file(profiles)
@@ -83,11 +83,14 @@ def remove_llm_profile(profile: ProfileConfig):
     _save_configured_llm_profiles_to_file(profiles)
 
 
-def get_llm_profiles_using_provider(provider: LLMProviderConfig) -> list[ProfileConfig]:
+def get_llm_profiles_using_credential(
+    credential: LLMCredential,
+) -> list[ProfileConfig]:
     return [
         profile
         for profile in _get_llm_profiles_from_file()
         if any(
-            getattr(profile, f).provider_label == provider.label for f in _AGENT_FIELDS
+            getattr(profile, f).credential_label == credential.label
+            for f in _AGENT_FIELDS
         )
     ]

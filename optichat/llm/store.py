@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-PROVIDERS_FILE = Path(".llm_providers.yaml")
+CREDENTIALS_FILE = Path(".llm_credentials.yaml")
 PROFILES_FILE = Path(".llm_profiles.yaml")
 
 

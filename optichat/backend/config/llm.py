@@ -4,27 +4,27 @@ from typing import Any
 from google.adk.models.lite_llm import LiteLlm
 
 from optichat.llm.catalog import resolve_litellm_model
+from optichat.llm.credentials import get_llm_credential_by_label
 from optichat.llm.models import AgentConfig, ProfileConfig
 from optichat.llm.profiles import get_llm_profile_by_label, get_llm_profiles
-from optichat.llm.providers import get_llm_provider_by_label
 
 PROFILE_ENV_VAR = "OPTICHAT_PROFILE"
 
 
 def get_litellm_params(agent_config: AgentConfig) -> dict[str, Any]:
-    """Resolve an agent's provider/model settings into LiteLLM completion kwargs."""
+    """Resolve an agent's credential/model settings into LiteLLM completion kwargs."""
     if not agent_config.enabled:
-        raise ValueError("The agent has no LLM provider and model configured.")
+        raise ValueError("The agent has no API key and model configured.")
 
-    provider = get_llm_provider_by_label(agent_config.provider_label)
-    if provider is None:
+    credential = get_llm_credential_by_label(agent_config.credential_label)
+    if credential is None:
         raise ValueError(
-            f"The LLM provider '{agent_config.provider_label}' is not configured."
+            f"The API key '{agent_config.credential_label}' is not configured."
         )
 
     params: dict[str, Any] = {
-        "model": resolve_litellm_model(provider.type, agent_config.llm_model),
-        "api_key": provider.api_key,
+        "model": resolve_litellm_model(credential.provider, agent_config.llm_model),
+        "api_key": credential.api_key,
     }
     if agent_config.temperature is not None:
         params["temperature"] = agent_config.temperature

@@ -1,19 +1,19 @@
 from pydantic import BaseModel, Field
 
 
-class LLMProviderConfig(BaseModel):
+class LLMCredential(BaseModel):
     label: str | None = Field(
-        None, description="A user-friendly label for the LLM provider."
+        None, description="A user-friendly label for the credential."
     )
-    type: str = Field(
-        ..., description="The type of the LLM provider (e.g., OpenAI, Anthropic)."
+    provider: str = Field(
+        ..., description="The name of the LLM provider (e.g., OpenAI, Anthropic)."
     )
     api_key: str = Field(..., description="The API key for the LLM provider.")
 
 
 class AgentConfig(BaseModel):
-    provider_label: str | None = Field(
-        ..., description="The label of the LLM provider to use for the agent."
+    credential_label: str | None = Field(
+        ..., description="The label of the credential the agent uses."
     )
     llm_model: str | None = Field(
         ..., description="The LLM model associated with the agent."
@@ -32,7 +32,7 @@ class AgentConfig(BaseModel):
 
     @property
     def enabled(self) -> bool:
-        return bool(self.provider_label and self.llm_model)
+        return bool(self.credential_label and self.llm_model)
 
 
 class ProfileConfig(BaseModel):
