@@ -2,8 +2,7 @@ from functools import lru_cache
 
 from litellm import litellm
 
-from optichat.llm.models import LLMCredential
-from optichat.llm.providers import ProviderVerificationError, fetch_provider_models
+from optichat.llm.providers import fetch_provider_models
 
 
 # Streamlit reruns the profile form on every interaction, so the list is cached.
@@ -44,25 +43,3 @@ def fetch_agent_models(provider: str, api_key: str) -> list[str]:
     Raises ProviderVerificationError if the key can't be verified.
     """
     return [m for m in _cached_models(provider, api_key) if _can_run_agents(m)]
-
-
-def get_available_llm_models(credential: LLMCredential) -> list[str]:
-    try:
-        return fetch_agent_models(credential.provider, credential.api_key)
-    except ProviderVerificationError:
-        return []
-
-
-# OpenAI model families whose function calling only works through the Responses
-# API, not /v1/chat/completions. LiteLLM's model map does not flag them yet.
-_OPENAI_RESPONSES_ONLY_PREFIXES = ("gpt-6",)
-
-
-def resolve_litellm_model(provider: str | None, model: str) -> str:
-    """Prefix `model` with LiteLLM's Responses API route when it requires one."""
-    if provider != "OpenAI" or model.startswith(("openai/", "responses/")):
-        return model
-    mode = litellm.model_cost.get(model, {}).get("mode")
-    if mode == "responses" or model.startswith(_OPENAI_RESPONSES_ONLY_PREFIXES):
-        return f"openai/responses/{model}"
-    return model

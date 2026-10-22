@@ -3,7 +3,7 @@ from typing import Any
 import streamlit as st
 
 from optichat.frontend.state import clean_session_state_for_profile_form, queue_feedback
-from optichat.llm.catalog import get_available_llm_models
+from optichat.llm.catalog import fetch_agent_models
 from optichat.llm.credentials import get_llm_credentials
 from optichat.llm.models import AgentConfig, LLMCredential, ProfileConfig
 from optichat.llm.profiles import (
@@ -11,6 +11,7 @@ from optichat.llm.profiles import (
     remove_llm_profile,
     update_llm_profile,
 )
+from optichat.llm.providers import ProviderVerificationError
 
 
 def _get_credential_index(
@@ -24,16 +25,25 @@ def _get_credential_index(
     return None
 
 
-def _get_model_index(
-    credential: LLMCredential | None, model_name: str | None
-) -> int | None:
-    if not credential or not model_name:
-        return None
-    models = get_available_llm_models(credential)
+def _model_options(credential: LLMCredential | None) -> list[str]:
+    """The models `credential` offers the agents, warning in the form if none."""
+    if not credential:
+        return []
     try:
-        return models.index(model_name)
-    except ValueError:
-        return None
+        models = fetch_agent_models(credential.provider, credential.api_key)
+    except ProviderVerificationError as e:
+        st.warning(f"No models to choose from for **{credential.label}**. {e}")
+        return []
+    if not models:
+        st.warning(
+            f"No models to choose from for **{credential.label}**. This API key has "
+            "no chat models that support tool calling, which the agents need."
+        )
+    return models
+
+
+def _index_of(models: list[str], model: str | None) -> int | None:
+    return models.index(model) if model in models else None
 
 
 def _infer_profile_mode(existing_profile: ProfileConfig | None) -> str:
@@ -84,18 +94,15 @@ def _render_simple_mode_fields(
         and selected_credential
         and selected_credential.label == existing_profile.root_agent.credential_label
     )
+    models = _model_options(selected_credential)
     if has_matching_credential and is_simple_profile and existing_profile:
-        initial_model_idx = _get_model_index(
-            selected_credential, existing_profile.root_agent.llm_model
-        )
+        initial_model_idx = _index_of(models, existing_profile.root_agent.llm_model)
     else:
         initial_model_idx = None
 
     selected_model = st.selectbox(
         "Select LLM model for the agents (Required)",
-        options=get_available_llm_models(selected_credential)
-        if selected_credential
-        else [],
+        options=models,
         key="simple_model_selectbox",
         index=initial_model_idx,
         help="Choose the LLM model for the agents.",
@@ -129,18 +136,15 @@ def _render_advanced_mode_agent_fields(
         and selected_credential
         and selected_credential.label == existing_agent.credential_label
     )
+    models = _model_options(selected_credential)
     if has_matching_credential and existing_agent:
-        initial_model_idx = _get_model_index(
-            selected_credential, existing_agent.llm_model
-        )
+        initial_model_idx = _index_of(models, existing_agent.llm_model)
     else:
         initial_model_idx = None
 
     selected_model = st.selectbox(
         f"Select LLM model for {agent_label} (Required)",
-        options=get_available_llm_models(selected_credential)
-        if selected_credential
-        else [],
+        options=models,
         index=initial_model_idx,
         help=f"Choose the LLM model for the {agent_label}.",
         key=f"{agent_label}_model_selectbox",

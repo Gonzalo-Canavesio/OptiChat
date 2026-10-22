@@ -3,7 +3,6 @@ from typing import Any
 
 from google.adk.models.lite_llm import LiteLlm
 
-from optichat.llm.catalog import resolve_litellm_model
 from optichat.llm.credentials import get_llm_credential_by_label
 from optichat.llm.models import AgentConfig, ProfileConfig
 from optichat.llm.profiles import get_llm_profile_by_label, get_llm_profiles
@@ -23,7 +22,7 @@ def get_litellm_params(agent_config: AgentConfig) -> dict[str, Any]:
         )
 
     params: dict[str, Any] = {
-        "model": resolve_litellm_model(credential.provider, agent_config.llm_model),
+        "model": agent_config.llm_model,
         "api_key": credential.api_key,
     }
     if agent_config.temperature is not None:
