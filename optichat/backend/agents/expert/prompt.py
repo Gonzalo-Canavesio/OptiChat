@@ -19,7 +19,7 @@ TOOL CONVENTIONS
 `get_model_components(version, component_type, pattern, tool_context)`
     • Batch types: ["objective","variable"] not separate calls. Max 3 versions, 2 types per call.
     • Valid component_type values: 'objective', 'variable', 'constraint', 'parameter', 'set', '' (all).
-      Use 'set' to retrieve Pyomo Set members (e.g., cities, time periods, products, routes).
+      Use 'set' to retrieve Set members (e.g., cities, time periods, products, routes).
     • NEVER call on modified versions ("__" in name) — values are already in GENERATOR_OUTPUT.
     • pattern matches against fully-indexed component names (e.g. "N[Rx1,3]", "X[A,0]"). Use wildcards for both name and index parts:
         - "N" or "N[*]"       → all entries of variable N
@@ -42,6 +42,8 @@ TOOL CONVENTIONS
 
     Available pre-injected shortcut functions the generator can CALL:
     __SHORTCUT_FUNCTIONS_PLACEHOLDER__
+
+__LANGUAGE_NOTES__
 
 RESOURCES
 <models> (available: {IS_MODELS_DICTIONARY_AVAILABLE}):
@@ -168,7 +170,7 @@ STRATEGY_ROBUSTNESS = """
    ACTION GUIDELINES:
    1. Review <model_description> to confirm the relationship between component name and its natural language name.
       Identify which Params the user explicitly named as uncertain — NOT Vars. Verify in <model_description>.
-      Parameters must be mutable (mutable=True) to be analyzed.
+      Pyomo models: parameters must be mutable (mutable=True) to be analyzed.
    2. Call `robustness_analysis` with:
       - `version`: the base model version name
       - `uncertain_param_names`: list of exact Param names the user specified
@@ -198,10 +200,22 @@ STRATEGY_ROBUSTNESS = """
       - Report this: changes to this parameter do not threaten feasibility, but do affect the objective value.
 """
 
+LANGUAGE_NOTES = {
+    "Pyomo": "MODELING LANGUAGE: Pyomo",
+    "GAMSPy": """MODELING LANGUAGE: GAMSPy
+    • Component names are GAMS symbol names; indices are set labels, e.g. demand[3] is demand at label '3'.
+    • Entries whose value is 0 may be missing: GAMS stores no zeros, and an equation only has the rows GAMS generated.
+    • get_model_components already reports the dual of every equation row ('dual') of an LP, also for the base model:
+      for a SENSITIVITY query on an RHS parameter read the duals there, generator_agent is not needed.
+    • To add or remove (deactivate) constraints the generator uses the `extend_model` shortcut function;
+      list it in SHORTCUT_FUNCTIONS. Fixing a decision variable or changing a parameter uses `modify_and_solve`.""",
+}
 
-def get_expert_agent_prompt(prompt_version=1, analysis_type="RETRIEVAL", diagnosis_report=None, cached_model_name=None, model_description=None):
+
+def get_expert_agent_prompt(prompt_version=1, analysis_type="RETRIEVAL", diagnosis_report=None, cached_model_name=None, model_description=None,
+                            modeling_language="Pyomo"):
     """
-    Get the expert agent prompt based on version and analysis type.
+    Get the expert agent prompt based on version, analysis type and the model's language ("Pyomo" or "GAMSPy").
     analysis_type must be one of: ['RETRIEVAL', 'SENSITIVITY', 'WHAT_IF', 'WHY_NOT', 'FEASIBILITY_RESTORATION', 'ROBUSTNESS']
     """
 
@@ -218,6 +232,7 @@ def get_expert_agent_prompt(prompt_version=1, analysis_type="RETRIEVAL", diagnos
 
     prompt = EXPERT_BASE_PROMPT.replace("{ANALYSIS_TYPE}", analysis_type.upper())
     prompt = prompt.replace("__STRATEGY_PLACEHOLDER__", strategy_content)
+    prompt = prompt.replace("__LANGUAGE_NOTES__", LANGUAGE_NOTES.get(modeling_language, LANGUAGE_NOTES["Pyomo"]))
 
     # Inject instruction grammar into generator_agent docs
     prompt = prompt.replace("__INSTRUCTION_GRAMMAR_PLACEHOLDER__", get_grammar_reference())

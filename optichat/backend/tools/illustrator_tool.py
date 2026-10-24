@@ -748,7 +748,7 @@ def get_model_info_for_description(request: str, tool_context: ToolContext) -> s
             logger.info(f"[ILLUSTRATOR_TOOL] Infeasible model — using tc_for_json=infeasibleOrUnbounded to skip obj() evaluation")
 
         formatted_components = None
-        if pkl_path:
+        if pkl_path and model_components.get("modeling_language") != "GAMSPy":
             try:
                 from extractor import pyomo2json
                 pyomo_model, _ = restore_model_object(pkl_path)

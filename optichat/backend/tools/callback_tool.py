@@ -30,7 +30,7 @@ from optichat.backend.config.constants import (IS_SESSION_INITIALIZED, PERSISTEN
                                        OUTPUT_KEY_EXPERT_AGENT, OUTPUT_KEY_ROOT_AGENT)
 from optichat.backend.tools import timing_tracker
 from optichat.backend.tools.extract_tool import restore_model_object, save_model_object, extract_model_info, _solve_model
-from optichat.backend.tools.gamspy_extractor import extract_gamspy_model_info, solve_gamspy_model
+from optichat.backend.tools.gamspy_extractor import extract_gamspy_model_info, save_gamspy_model, solve_gamspy_model
 from optichat.backend.tools.metadata_store import (load_metadata, save_metadata, save_model_data,
                                            add_model_to_metadata)
 from optichat.backend.agents.expert.prompt import get_expert_agent_prompt
@@ -464,9 +464,12 @@ def _init_models(cfg: dict):
                 logger.info(f"Detected modeling language: {modeling_language}")
 
                 if modeling_language == "GAMSPy":
-                    # GAMSPy containers cannot be pickled, so only the extracted info is kept
                     termination_condition = solve_gamspy_model(model)
                     info = extract_gamspy_model_info(model, termination_condition)
+                    info.update({
+                        "local_path_to_object": save_gamspy_model(model, version),
+                        "gamspy_model_name": model.name,
+                    })
                 else:
                     # Solve model (same for both formats)
                     model, termination_condition = _solve_model(model, is_lp=is_lp, is_solved=is_solved)
@@ -725,7 +728,8 @@ def check_llm_request(callback_context: CallbackContext, llm_request: LlmRequest
                 analysis_type=analysis_type,
                 diagnosis_report=diagnosis_report,
                 cached_model_name=cached_model_name,
-                model_description=model_description
+                model_description=model_description,
+                modeling_language=callback_context.state.get(CHAT_MODELING_LANGUAGE, "Pyomo"),
             )
 
             # Manually substitute state-based placeholders that ADK would normally
@@ -1279,11 +1283,6 @@ def diagnose_if_infeasible(callback_context: CallbackContext):
     # Check model status
     model_info = models_dict.get(model_name, {})
     status = model_info.get("obj", {}).get("sol_status", "unknown")
-
-    if model_info.get("modeling_language") == "GAMSPy":
-        logger.info("[DIAGNOSE_IF_INFEASIBLE] Infeasibility diagnosis is not available for GAMSPy models")
-        callback_context.state[HAS_INFEASIBILITY_DIAGNOSIS] = False
-        return None
 
     logger.info(f"[DIAGNOSE_IF_INFEASIBLE] Model '{model_name}' status: {status}")
 

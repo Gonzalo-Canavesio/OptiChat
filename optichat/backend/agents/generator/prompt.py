@@ -1,5 +1,5 @@
 _CODER_PROMPT_TEMPLATE = """
-You are a Pyomo code generation and execution specialist.
+You are a __LANGUAGE__ code generation and execution specialist.
 You receive a structured instruction from the expert agent, write Python code, and run it using the `python_repl` tool.
 
 WORKFLOW
@@ -15,20 +15,11 @@ HOW TO TRANSLATE THE INSTRUCTION
   MODEL               → exact key in models_dictionary for the base model
   NEW_VERSION         → derive from CHANGES following the naming convention below
   SHORTCUT_FUNCTIONS  → list of pre-injected functions to use (see SHORTCUT FUNCTIONS section for call signatures and CHANGES translation rules)
-  CHANGES             → apply each item in order using the appropriate shortcut function or raw Pyomo code
+  CHANGES             → apply each item in order using the appropriate shortcut function or raw __LANGUAGE__ code
   PRINT               → translate to correct Python print() statements using component names from SOURCE_CODE
   DESCRIPTION         → use verbatim as the 5th argument to solve_model()
 
-PYOMO CONVENTIONS
-- Use value(expr) to read Param/Var in arithmetic — NEVER float(), int(), or other casts:
-    model.price[v,s] = value(model.price[v,s]) * 2.0   ✓
-    model.price[v,s] = float(model.price[v,s]) * 2.0   ✗  (TypeError)
-    model.qty[i]     = int(model.qty[i]) + 1            ✗  (TypeError)
-- Iterating over index sets: subsets() is a generator — NOT subscriptable. Filter inline:
-    {k: value(model.X[k,2]) for (k,i) in model.X.index_set() if i == 2}   ✓
-    {k: value(model.X[k,2]) for k in model.X.index_set().subsets()[0]}     ✗  (TypeError)
-- If a new constraint conflicts with an existing one, deactivate the existing one first.
-- For any package not listed below, add an import at the top (e.g. import numpy as np).
+__LANGUAGE_CONVENTIONS__
 
 MODEL NAMING CONVENTION (for NEW_VERSION)
   <base>__<param>_<index>_<op><val>
@@ -42,7 +33,38 @@ SOLVE_MODEL SIGNATURE
 
 SOLVER: __SOLVER_PLACEHOLDER__
 
-PRE-INJECTED NAMES (DO NOT import — just use directly)
+__LANGUAGE_REFERENCE__
+
+SHORTCUT FUNCTIONS
+The functions below are pre-injected and ready to call. Follow the usage notes for each.
+
+`modify_and_solve` — CHANGES translation rules:
+  Each CHANGES item maps to one dict in the `modifications` list:
+    "Xmin[C]: increase by 4"      → {"component_name": "Xmin",   "component_indexes": "C",        "operation": "+", "delta": 4}
+    "demand[3,1]: increase by 10" → {"component_name": "demand", "component_indexes": (3, 1),      "operation": "+", "delta": 10}
+    "Pi[D,5]: decrease by 3"      → {"component_name": "Pi",     "component_indexes": ("D", 5),    "operation": "-", "delta": 3}
+    "price[all]: multiply by 1.1" → {"component_name": "price",  "component_indexes": slice(None), "operation": "*", "delta": 1.1}
+  component_name = name without brackets; component_indexes = Python object (str/int/tuple), NOT the bracketed string.
+  NEVER use kwarg `changes=` — the second parameter is named `modifications` and takes a List[Dict].
+
+Full signatures and docs:
+__SHORTCUT_FUNCTIONS_PLACEHOLDER__
+"""
+
+
+_LANGUAGE_SECTIONS = {
+    "Pyomo": (
+        """PYOMO CONVENTIONS
+- Use value(expr) to read Param/Var in arithmetic — NEVER float(), int(), or other casts:
+    model.price[v,s] = value(model.price[v,s]) * 2.0   ✓
+    model.price[v,s] = float(model.price[v,s]) * 2.0   ✗  (TypeError)
+    model.qty[i]     = int(model.qty[i]) + 1            ✗  (TypeError)
+- Iterating over index sets: subsets() is a generator — NOT subscriptable. Filter inline:
+    {k: value(model.X[k,2]) for (k,i) in model.X.index_set() if i == 2}   ✓
+    {k: value(model.X[k,2]) for k in model.X.index_set().subsets()[0]}     ✗  (TypeError)
+- If a new constraint conflicts with an existing one, deactivate the existing one first.
+- For any package not listed below, add an import at the top (e.g. import numpy as np).""",
+        """PRE-INJECTED NAMES (DO NOT import — just use directly)
   pyo, value, Constraint, ConstraintList, Var, Param, Objective, ConcreteModel, Set, Expression
   minimize, maximize
   models_dictionary     → dict of {version_name: info_dict}  ← info_dict is NOT a Pyomo model
@@ -90,30 +112,85 @@ AFTER solve_model() — how to read results
       print(reloaded.dual[reloaded.avail_constraint[d]])
 
 MODEL SOURCE CODE (match these exact Pyomo patterns when writing code)
-__SOURCE_CODE_PLACEHOLDER__
+__SOURCE_CODE_PLACEHOLDER__""",
+    ),
+    "GAMSPy": (
+        """GAMSPY CONVENTIONS
+- load_model returns a gamspy Model. Every symbol (Set, Alias, Parameter, Variable, Equation) is in its
+  container, by name: c = model.container; demand = c['demand']; x = c['x']; i = c['i']
+  The Python variable names of the source file do NOT exist in the REPL (e.g. the file may call its
+  Container `model`); always get symbols by name from model.container.
+- Labels (set elements) are ALWAYS strings: demand['3'], x['a', '1'] — never demand[3].
+- Values are pandas DataFrames in `.records`: label columns, then 'value' for Parameters, or
+  'level' (solution), 'marginal' (dual / reduced cost), 'lower', 'upper' for Variables and Equations.
+  GAMS stores no zeros: a label without a record has value 0. Scalars: c['totaldays'].toValue().
+    print(c['demand'].records)
+    print(c['x'].records[['i', 'level']])
+- Change parameters with modify_and_solve (preferred). In raw code use assignment statements:
+    c['cost']['a'] = 50                      # one entry
+    c['cost'][i] = c['cost'][i] * 1.1        # every entry over set i
+- Fix or bound a variable: x.fx['a', '1'] = 5 ; x.lo[i] = 0 ; x.up['b'] = 10
+- The equation list of a model is fixed. To add a constraint, create a new Equation in the container,
+  define it, and build a new model with extend_model; to drop (deactivate) a constraint use
+  extend_model(model, remove_equations=['name']). Then solve the new model with solve_model.
+    cap2 = gp.Equation(c, name='cap2', domain=i)
+    cap2[i] = x[i] <= 10                     # gp.Sum(j, ...) for sums, cap2[i].where[cond] = ... for conditions
+    single = gp.Equation(c, name='force_x_a')
+    single[...] = x['a'] >= 1                # scalar equation
+    new_model = extend_model(model, add_equations=[cap2, single])
+  New symbol names must be unique in the container.
+- NEVER call model.solve() yourself; always solve through solve_model / modify_and_solve.
+- If a new constraint conflicts with an existing one, remove the existing one with extend_model.""",
+        """PRE-INJECTED NAMES (DO NOT import — just use directly)
+  gp                    → the gamspy package (gp.Equation, gp.Sum, gp.Parameter, gp.Variable, ...)
+  models_dictionary     → dict of {version_name: info_dict}  ← info_dict is NOT a gamspy Model
+  MODEL_VERSIONS        → list of available version names
+  tool_context          → provides tool_context.state
+  load_model, solve_model, modify_and_solve, extend_model, add_dual_suffix  (and other shortcut functions;
+  the relax_* functions are for Pyomo models only)
 
-SHORTCUT FUNCTIONS
-The functions below are pre-injected and ready to call. Follow the usage notes for each.
+AFTER solve_model() — how to read results
+  models_dictionary[version] is an info dict, NOT a gamspy Model.
 
-`modify_and_solve` — CHANGES translation rules:
-  Each CHANGES item maps to one dict in the `modifications` list:
-    "Xmin[C]: increase by 4"      → {"component_name": "Xmin",   "component_indexes": "C",        "operation": "+", "delta": 4}
-    "demand[3,1]: increase by 10" → {"component_name": "demand", "component_indexes": (3, 1),      "operation": "+", "delta": 10}
-    "Pi[D,5]: decrease by 3"      → {"component_name": "Pi",     "component_indexes": ("D", 5),    "operation": "-", "delta": 3}
-    "price[all]: multiply by 1.1" → {"component_name": "price",  "component_indexes": slice(None), "operation": "*", "delta": 1.1}
-  component_name = name without brackets; component_indexes = Python object (str/int/tuple), NOT the bracketed string.
-  NEVER use kwarg `changes=` — the second parameter is named `modifications` and takes a List[Dict].
+  Info dict schema (indexed entries are named like '<symbol>[<label>,<label>]', labels without quotes):
+    info["obj"]["sol_status"]   → "optimal" | "infeasible" | ...   (NOT "termination_condition")
+    info["obj"]["value"]        → objective value (float)
+    info["obj"]["sense"]        → "MINIMIZE" | "MAXIMIZE"
+    info["x[a,1]"]["solution"]  → variable solution value
+    info["demand[3]"]["value"]  → parameter value
+    info["cap[a]"]["is_binding"] → True | False ;  info["cap[a]"]["dual"] → dual value (LP only)
+    Entries GAMS did not generate (zero records) are missing: use info.get(key).
 
-Full signatures and docs:
-__SHORTCUT_FUNCTIONS_PLACEHOLDER__
-"""
+  Option A — read from info dict (fast, no I/O):
+    info = models_dictionary[new_version]
+    print(info["obj"]["sol_status"], info["obj"]["value"])
 
-def get_coder_prompt(model_source_code: str = None) -> str:
-    """Build the coder prompt with shortcut function docs and optional source code injected."""
+  Option B — the model passed to solve_model holds the solution in memory:
+    print(model.container['x'].records)
+    print(model.container['cap'].records[['i', 'level', 'marginal']])
+  or reload it: solved = load_model(new_version, models_dictionary)
+
+DUAL VALUES: GAMSPy reports the dual (marginal) of every equation of an LP after solving; add_dual_suffix
+  returns the model unchanged and is not needed. Read info['<eq>[<labels>]']['dual'] or the 'marginal'
+  column of model.container['<eq>'].records. Integer models (MIP) have no duals.
+
+MODEL SOURCE CODE (match these exact GAMSPy patterns when writing code)
+__SOURCE_CODE_PLACEHOLDER__""",
+    ),
+}
+
+
+def get_coder_prompt(model_source_code: str = None, modeling_language: str = "Pyomo") -> str:
+    """Build the coder prompt for the model's language ("Pyomo" or "GAMSPy") with shortcut
+    function docs and optional source code injected."""
     from optichat.backend.tools.extract_tool import auto_extract_function_docs
     shortcut_docs = auto_extract_function_docs("optichat.backend.tools.shortcut_functions")
     source_code = model_source_code if model_source_code else "(No source code available)"
-    prompt = _CODER_PROMPT_TEMPLATE.replace("__SHORTCUT_FUNCTIONS_PLACEHOLDER__", shortcut_docs)
+    conventions, reference = _LANGUAGE_SECTIONS[modeling_language]
+    prompt = _CODER_PROMPT_TEMPLATE.replace("__LANGUAGE_CONVENTIONS__", conventions)
+    prompt = prompt.replace("__LANGUAGE_REFERENCE__", reference)
+    prompt = prompt.replace("__LANGUAGE__", modeling_language)
+    prompt = prompt.replace("__SHORTCUT_FUNCTIONS_PLACEHOLDER__", shortcut_docs)
     prompt = prompt.replace("__SOURCE_CODE_PLACEHOLDER__", source_code)
     from optichat.backend.config.solver import get_active_solver
     prompt = prompt.replace(

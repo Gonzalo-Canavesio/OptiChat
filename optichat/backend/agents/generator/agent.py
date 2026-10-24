@@ -4,6 +4,7 @@ import re
 import traceback as tb
 from collections.abc import AsyncGenerator
 
+import gamspy as gp
 import litellm
 import pyomo.environ as pyo
 from google.adk.agents import BaseAgent
@@ -16,6 +17,7 @@ from pydantic import Field, PrivateAttr
 
 from optichat.backend.agents.generator.prompt import get_coder_prompt
 from optichat.backend.config.constants import (
+    CHAT_MODELING_LANGUAGE,
     GENERATOR_OUTPUT,
     MODEL_VERSIONS,
     MODELS_DICTIONARY,
@@ -30,7 +32,8 @@ _PYTHON_REPL_TOOL = {
         "name": "python_repl",
         "description": (
             "Execute Python code in the REPL. "
-            "pyomo, models_dictionary, solve_model, modify_and_solve, and all other "
+            "pyomo (pyo), gamspy (gp), models_dictionary, solve_model, "
+            "modify_and_solve, and all other "
             "shortcut functions are pre-injected — do NOT import them. "
             "Returns stdout output from the execution."
         ),
@@ -71,7 +74,7 @@ def _get_last_user_text(ctx: InvocationContext) -> str:
 
 
 def _inject_state_into_repl(repl: PythonREPL, state: dict) -> None:
-    """Inject pyomo objects, shortcut functions, and session state into the REPL."""
+    """Inject pyomo objects, gamspy, shortcut functions and session state."""
     import optichat.backend.tools.shortcut_functions as shortcut_functions
 
     # Clean stale user variables from prior calls
@@ -79,6 +82,7 @@ def _inject_state_into_repl(repl: PythonREPL, state: dict) -> None:
         preserved = {
             "__builtins__",
             "pyo",
+            "gp",
             "value",
             "Constraint",
             "ConstraintList",
@@ -102,6 +106,7 @@ def _inject_state_into_repl(repl: PythonREPL, state: dict) -> None:
             del repl.globals[k]
 
     repl.globals["pyo"] = pyo
+    repl.globals["gp"] = gp
     repl.globals["value"] = pyo.value
     repl.globals["Constraint"] = pyo.Constraint
     repl.globals["ConstraintList"] = pyo.ConstraintList
@@ -133,7 +138,7 @@ def _inject_state_into_repl(repl: PythonREPL, state: dict) -> None:
 
 class CoderAgent(BaseAgent):
     """
-    Single coder agent that writes and executes Pyomo code via litellm
+    Single coder agent that writes and executes Pyomo or GAMSPy code via litellm
     with python_repl registered as a native tool.
 
     Agentic loop:
@@ -167,7 +172,10 @@ class CoderAgent(BaseAgent):
         model_hint = _model_match.group(1).strip() if _model_match else None
 
         model_source_code = _get_source_code_for_prompt(state, model_hint=model_hint)
-        system_instruction = get_coder_prompt(model_source_code=model_source_code)
+        system_instruction = get_coder_prompt(
+            model_source_code=model_source_code,
+            modeling_language=state.get(CHAT_MODELING_LANGUAGE, "Pyomo"),
+        )
 
         _inject_state_into_repl(self._repl, state)
 
@@ -288,15 +296,16 @@ def create_generator_agent(profile: ProfileConfig) -> CoderAgent:
     Returns a single CoderAgent named 'generator_agent' that:
       - Calls the LiteLLM API directly
       - Has python_repl registered as a native tool
-      - Writes and executes Pyomo code in an agentic loop
+      - Writes and executes Pyomo or GAMSPy code in an agentic loop
       - Writes GENERATOR_OUTPUT and updated MODELS_DICTIONARY to session state
     """
     return CoderAgent(
         name="generator_agent",
         llm_params=get_litellm_params(profile.generator_agent),
         description=(
-            "Pyomo code generator and executor. Receives a structured instruction "
-            "from the expert agent, writes Python/Pyomo code, and executes it via "
+            "Pyomo/GAMSPy code generator and executor. Receives a structured "
+            "instruction from the expert agent, writes Python code for the model, "
+            "and executes it via "
             "python_repl in an agentic loop. Returns execution log as GENERATOR_OUTPUT."
         ),
     )

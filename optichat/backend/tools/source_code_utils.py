@@ -218,7 +218,7 @@ def format_source_for_prompt(
     Args:
         source: Cleaned source code string
         version_name: Model version name
-        pkl_path: Path to pickle file
+        pkl_path: Path to the saved model file (.pkl for Pyomo, .zip for GAMSPy)
         metadata: Historical metadata dictionary
     
     Returns:
@@ -234,7 +234,7 @@ def format_source_for_prompt(
         
         return f"""
 ===== BASE MODEL SOURCE: {base_model} =====
-Pickle file: {pkl_path}
+Saved model file: {pkl_path}
 
 {source}
 
@@ -249,13 +249,15 @@ and account for the previous modifications listed.
     else:
         return f"""
 ===== MODEL CONSTRAINT DEFINITIONS: {version_name} =====
-Pickle file: {pkl_path}
+Saved model file: {pkl_path}
 Source file: {os.path.join(workspace.model_objects_dir(), version_name + ".py")}
 
 These are the constraint definitions extracted from the model source.
 When writing modification code in python_repl_func:
-- Use the EXACT same syntax patterns (ConstraintList vs lambda rules)
+- Use the EXACT same syntax patterns (e.g. Pyomo ConstraintList vs lambda rules)
 - Match the index structures (e.g., mu[i, r, theta] not mu[i])
+- The Python variable names of this file do not exist in the REPL: get the model with
+  load_model and its components by name (Pyomo: model.<name>; GAMSPy: model.container['<name>'])
 - Reference component names exactly as defined
 
 {source}

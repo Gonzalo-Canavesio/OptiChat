@@ -1,8 +1,10 @@
 import math
+import os
 import re
 
 import gamspy as gp
 
+from optichat.backend.config import workspace
 from optichat.backend.config.solver import (
     SolverNotAvailableError,
     get_solver_gamspy_name,
@@ -35,13 +37,42 @@ _SOLVE_FAILURES = {
     gp.SolveStatus.SystemError,
 }
 _SENSES = {"=e=": "==", "=l=": "<=", "=g=": ">="}
+# Symbols OptiChat adds to a model's container (robustness analysis, relaxation)
+HELPER_PREFIX = "optichat_"
 _WORD = re.compile(r"[A-Za-z_]\w*")
 
 
-def solve_gamspy_model(model: gp.Model) -> str:
+def save_gamspy_model(model: gp.Model, version: str) -> str:
+    """Serialize the model's container to <workspace>/model_objects/<version>.zip.
+
+    GAMSPy containers cannot be pickled; serialization keeps every symbol with its
+    records and every model with its equation definitions, so the model can be
+    modified and solved again after restore_gamspy_model.
+    """
+    folder = workspace.model_objects_dir()
+    os.makedirs(folder, exist_ok=True)
+    path = str(folder / f"{version}.zip")
+    # gp.deserialize restores the statuses as ints, and gp.serialize expects the
+    # enums, so a restored model that was not solved again could not be saved
+    for other in model.container.models.values():
+        if isinstance(other._status, int):
+            other._status = gp.ModelStatus(other._status)
+        if isinstance(other._solve_status, int):
+            other._solve_status = gp.SolveStatus(other._solve_status)
+    gp.serialize(model.container, path)
+    return path
+
+
+def restore_gamspy_model(path: str, model_name: str) -> gp.Model:
+    """The model named model_name from a container saved by save_gamspy_model."""
+    return gp.deserialize(path).models[model_name]
+
+
+def solve_gamspy_model(model: gp.Model, time_limit: float | None = None) -> str:
     """Solve with the active solver; returns the status named like Pyomo's
     termination conditions ('optimal', 'infeasible', ...)."""
-    model.solve(solver=get_solver_gamspy_name())
+    options = gp.Options(time_limit=time_limit) if time_limit is not None else None
+    model.solve(solver=get_solver_gamspy_name(), options=options)
     if (
         model.status == gp.ModelStatus.LicenseError
         or model.solve_status == gp.SolveStatus.LicenseError
@@ -134,6 +165,8 @@ def _extract_sets(container: gp.Container) -> dict:
 def _extract_parameters(container: gp.Container) -> dict:
     info = {}
     for symbol in container.getParameters():
+        if symbol.name.startswith(HELPER_PREFIX):
+            continue  # evaluation helpers of gamspy_analysis, not model data
         records = _records(symbol)
         if symbol.dimension == 0:  # a scalar at its default is stored without records
             records = [([], (symbol.toValue() or 0.0,))]
@@ -274,7 +307,11 @@ def extract_gamspy_model_info(model: gp.Model, termination_condition: str) -> di
     autogen = set(model._autogen_symbols)
     solved = termination_condition == "optimal"
     var_names = {v.name for v in container.getVariables()} - autogen
-    param_names = {p.name for p in container.getParameters()}
+    param_names = {
+        p.name
+        for p in container.getParameters()
+        if not p.name.startswith(HELPER_PREFIX)
+    }
 
     info = {}
     info.update(_extract_sets(container))

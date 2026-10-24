@@ -3,6 +3,10 @@ import pyomo.environ as pe
 from pyomo.opt import SolverStatus, TerminationCondition
 from optichat.backend.config.solver import make_solver
 from optichat.backend.tools.extract_tool import extract_model_info, restore_model_object, save_model_object, unique_component_name
+from optichat.backend.tools.gamspy_extractor import (extract_gamspy_model_info, restore_gamspy_model,
+                                                     save_gamspy_model, solve_gamspy_model)
+from optichat.backend.tools.gamspy_shortcuts import (apply_modification, extend_gamspy_model, is_discrete_gamspy_model,
+                                                     is_gamspy_model)
 from optichat.backend.tools.metadata_store import (load_metadata, save_metadata, save_model_data,
                                            add_model_to_metadata)
 from typing import Any, Dict, List, Tuple
@@ -12,7 +16,8 @@ from optichat.backend.config.constants import USER_QUERY
 def load_model(version: str, models_dictionary: dict):
     """
     ```model = load_model(version: str, models_dictionary: dict)```
-    loads a model associated with a given version
+    loads a model associated with a given version: a Pyomo ConcreteModel, or a gamspy Model
+    for GAMSPy models (its symbols are in model.container, e.g. model.container['demand'])
 
     This function supports lazy loading: if the model is not in the runtime dictionary
     but exists in the metadata store, it will be loaded from disk automatically.
@@ -36,20 +41,22 @@ def load_model(version: str, models_dictionary: dict):
             ) from e
 
     info = models_dictionary[version]
-    if info.get("modeling_language") == "GAMSPy":
-        raise NotImplementedError(
-            f"Model '{version}' is a GAMSPy model. Only reading its components is "
-            "supported for GAMSPy so far; it cannot be re-solved or modified."
-        )
-    local_path_to_object = info["local_path_to_object"]
     sol_status = info["obj"].get('sol_status', 'unknown')
     objval = info["obj"].get('value', 'unknown')
 
-    model, file_name = restore_model_object(local_path_to_object)
+    if info.get("modeling_language") == "GAMSPy":
+        if "local_path_to_object" not in info:
+            raise FileNotFoundError(
+                f"Model '{version}' was loaded before GAMSPy models were saved; "
+                "create a new chat with the model file to modify or re-solve it."
+            )
+        model = restore_gamspy_model(info["local_path_to_object"], info["gamspy_model_name"])
+    else:
+        model, file_name = restore_model_object(info["local_path_to_object"])
 
-    # remove dual suffix if exists so that it won't interfere with newly added constraints
-    if hasattr(model, 'dual'):
-        model.del_component(model.dual)
+        # remove dual suffix if exists so that it won't interfere with newly added constraints
+        if hasattr(model, 'dual'):
+            model.del_component(model.dual)
 
     print(f"Model, in version of {version}, is loaded.")
     print(f"{version} Model status: {sol_status}")
@@ -63,7 +70,16 @@ def add_dual_suffix(model: pe.ConcreteModel):
     adds a dual suffix to the model so that after solving:
       - model.dual[constraint]      — shadow price / marginal change in objective per unit increase in constraint RHS
     After calling solve_model(), dual values are accessible via get_model_components().
+    GAMSPy models need no suffix (the model is returned unchanged): after solve_model the dual of
+    each LP equation row is models_dictionary[version]['<equation>[<labels>]']['dual'].
     """
+    if is_gamspy_model(model):
+        if is_discrete_gamspy_model(model):
+            print("Model has integer/binary variables. Dual values are only reported for LP models.")
+        else:
+            print("GAMSPy reports the duals (marginals) of every equation after solving; no suffix is needed.")
+        return model
+
     # simple safeguard to ensure model is LP
     for var in model.component_objects(pe.Var, active=True):
         for idx in var:
@@ -87,7 +103,7 @@ def solve_model(model: pe.ConcreteModel, version: str, models_dictionary: dict, 
     solves the model and update it in the models_dictionary by labelling it with the given version.
 
     Args:
-        model: Pyomo ConcreteModel to solve
+        model: Pyomo ConcreteModel or gamspy Model to solve
         version: Version name for this model
         models_dictionary: Runtime cache of model data
         tool_context: Optional ToolContext for state management
@@ -118,9 +134,14 @@ def solve_model(model: pe.ConcreteModel, version: str, models_dictionary: dict, 
 
     time_limit_seconds = 180
     print(f"Solving model with time limit of {time_limit_seconds} seconds...")
-    solver = make_solver(time_limit=time_limit_seconds)
-    results = solver.solve(model, tee=False)
-    info = extract_model_info(model, results.solver.termination_condition)
+    if is_gamspy_model(model):
+        termination_condition = solve_gamspy_model(model, time_limit=time_limit_seconds)
+        info = extract_gamspy_model_info(model, termination_condition)
+        info.update({"modeling_language": "GAMSPy", "gamspy_model_name": model.name})
+    else:
+        solver = make_solver(time_limit=time_limit_seconds)
+        results = solver.solve(model, tee=False)
+        info = extract_model_info(model, results.solver.termination_condition)
 
     sol_status = info["obj"].get('sol_status', 'unknown')
     objval = info["obj"].get('value', 'unknown')
@@ -132,7 +153,10 @@ def solve_model(model: pe.ConcreteModel, version: str, models_dictionary: dict, 
     print(f"{version} Model status: {sol_status}")
     print(f"{version} Model optimal objective value: {objval}")
 
-    local_path_to_object = save_model_object(model, version)
+    if is_gamspy_model(model):
+        local_path_to_object = save_gamspy_model(model, version)
+    else:
+        local_path_to_object = save_model_object(model, version)
     info.update({
         "local_path_to_object": local_path_to_object,
     })
@@ -239,6 +263,10 @@ def modify_and_solve(
         IMPORTANT — check component dimensionality first:
             1D → scalar or (slice(None),)       — NEVER use (slice(None), j)
             2D → (i, j) or (slice(None), j)
+        GAMSPy models: indices are GAMS labels, always strings ("3" or ("a", "1"), ints are converted);
+            a predicate receives the label (1-D) or the tuple of labels as strings: lambda idx: idx[1] == "1".
+            Slices and predicates only select the existing records (GAMS stores no zeros); an exact
+            index is applied even when the record does not exist yet (its current value is 0).
 
     Example:
         ```python
@@ -266,6 +294,10 @@ def modify_and_solve(
 
         if operation == "!":
             print(f"Skipping '{component_name}': operation '!' requires sensitivity analysis, not modify_and_solve.")
+            continue
+
+        if is_gamspy_model(model):
+            change_log.extend(apply_modification(model, component_name, component_indexes, operation, delta))
             continue
 
         model_component = model.find_component(component_name)
@@ -336,6 +368,27 @@ def modify_and_solve(
 
     models_dictionary = solve_model(model, new_version, models_dictionary, tool_context, description)
     return models_dictionary
+
+
+def extend_model(model, add_equations=(), remove_equations=(), name=None):
+    """
+    ```new_model = extend_model(model, add_equations=[eq, ...], remove_equations=['eq_name', ...], name=None)```
+    GAMSPy models only: returns a new gamspy Model in the same container with the model's equations,
+    minus remove_equations (names or Equation objects), plus add_equations; same problem type, sense
+    and objective. Pass the new model to solve_model. Create the new equations first in model.container:
+        ```python
+        model = load_model('job', models_dictionary)
+        c = model.container
+        s = c['s']
+        force_s = gp.Equation(c, name='force_s_1_eq_s_2')
+        force_s[...] = s['1'] == s['2']
+        new_model = extend_model(model, add_equations=[force_s])
+        models_dictionary = solve_model(new_model, 'job__force_s_1_eq_s_2', models_dictionary, tool_context, description)
+        ```
+    """
+    if not is_gamspy_model(model):
+        raise TypeError("extend_model is for GAMSPy models; with Pyomo add or deactivate constraints on the model.")
+    return extend_gamspy_model(model, add_equations, remove_equations, name)
 
 
 def relax_constraint_and_penalize_violation(constraint_name: str,
