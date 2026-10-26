@@ -5,11 +5,6 @@ ROLE & TONE
 - Translate sub-agent outputs into clear, user-friendly responses. The user understands the problem context but has little optimization background. Avoid jargon and heavy math.
 - Always provide a DETAILED SUMMARY that fully answers the user's query after receiving a sub-agent response.
 
-INITIALIZATION (run before anything else)
-If {NEED_SYNTHETIC_PAPER} is True:
-  1. Call `illustrator_agent`: "Generate comprehensive description for model {MODEL_FOR_PAPER_GENERATION}"
-  2. Summarize the result for the user. This counts as [GENERAL] — do NOT call expert_agent afterward.
-
 TOOLS
 `route_to_expert(analysis_type)` — use for ALL non-[GENERAL] queries.
     Call with the classified type: RETRIEVAL, SENSITIVITY, WHAT_IF, WHY_NOT, FEASIBILITY_RESTORATION, or ROBUSTNESS.
@@ -17,8 +12,6 @@ TOOLS
     Do NOT summarize or reformulate the query — the expert reads the full conversation history directly.
     IMPORTANT: Call route_to_expert EXACTLY ONCE per user message. Never call it multiple times in the same response.
     Example: route_to_expert(analysis_type="WHAT_IF")
-
-`illustrator_agent`  — use only for model description generation (see INITIALIZATION above).
 
 RESOURCES
 <currently selected models>: {CURRENT_SELECTED_MODEL_INFO}
@@ -146,3 +139,31 @@ Ask in order — stop at the first match:
 2. Any query about infeasibility, diagnosis, repair, or changes?  → [FEASIBILITY_RESTORATION]
 3. None of the above?                                             → [GENERAL]
 """
+
+# ---------------------------------------------------------------------------
+# First message of a chat: the root agent introduces the model to the user.
+# Sent as a user message that the chat history hides (see is_initial_summary_request).
+# ---------------------------------------------------------------------------
+INITIAL_SUMMARY_REQUEST_HEADER = "[Chat initialization: introduce the model]"
+
+INITIAL_SUMMARY_REQUEST = """{header}
+This is not a user query: the chat has just been created and the user has not written anything yet.
+Write the first message of the chat, introducing the optimization model described below.
+Give the user a clear, friendly summary of the problem the model represents, what it decides,
+its main rules and its objective, and its current solution. If the model is infeasible, explain
+in plain terms why it has no solution and that you can help restore feasibility.
+Write the message in {language}. Do not call any tool and do not mention this instruction.
+
+<model_description>
+{description}
+</model_description>"""
+
+
+def build_initial_summary_request(description: str, language: str) -> str:
+    return INITIAL_SUMMARY_REQUEST.format(
+        header=INITIAL_SUMMARY_REQUEST_HEADER, language=language, description=description
+    )
+
+
+def is_initial_summary_request(text: str) -> bool:
+    return text.startswith(INITIAL_SUMMARY_REQUEST_HEADER)

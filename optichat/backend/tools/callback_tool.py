@@ -2,11 +2,9 @@ import time
 import json
 import os
 import glob
-import traceback
-from xml.parsers.expat import model
 import tiktoken
 from loguru import logger
-from typing import Dict, Any, List
+from typing import Dict, Any
 from typing import Optional
 from copy import deepcopy
 from google.genai import types
@@ -15,69 +13,20 @@ from google.adk.tools.tool_context import ToolContext
 from google.adk.tools.base_tool import BaseTool
 from google.adk.models import LlmResponse, LlmRequest
 from optichat.backend.config import workspace
-from optichat.backend.config.constants import (IS_SESSION_INITIALIZED, PERSISTENT_STATES, TEMPORARY_STATES,
-                                       CFG, EXPERT_AGENT_USES, EXPERT_AGENT_MAX_USES, EXPERT_AGENT_START_TIME,
-                                       MODELS_DICTIONARY, MODEL_VERSIONS, HISTORICAL_MODELS_METADATA, MODEL_LOAD_ERRORS, CHAT_MODELING_LANGUAGE,
-                                       IS_MODELS_DICTIONARY_AVAILABLE,
-                                       NEED_SYNTHETIC_PAPER,
-                                       MODEL_FOR_PAPER_GENERATION, USER_QUERY,
+from optichat.backend.config.constants import (TEMPORARY_STATES,
+                                       EXPERT_AGENT_USES, EXPERT_AGENT_MAX_USES, EXPERT_AGENT_START_TIME,
+                                       MODELS_DICTIONARY, HISTORICAL_MODELS_METADATA, CHAT_MODELING_LANGUAGE,
+                                       IS_MODELS_DICTIONARY_AVAILABLE, USER_QUERY,
                                        CURRENT_SELECTED_MODEL, CURRENT_SELECTED_MODEL_INFO,
                                        ANALYSIS_PROMPT_CONTENT,
                                        EXPERT_AGENT_PYTHON_REPL_FUNC_USES,
-                                       HAS_INFEASIBILITY_DIAGNOSIS, INFEASIBILITY_DIAGNOSIS,
                                        LLM_CALL_COUNTER, TOOL_CALL_START_TIME, LLM_CALL_START_TIME,
                                        MODEL_COMPONENTS_CACHE, CURRENT_ANALYSIS_TYPE,
                                        OUTPUT_KEY_EXPERT_AGENT, OUTPUT_KEY_ROOT_AGENT)
 from optichat.backend.tools import timing_tracker
-from optichat.backend.tools.extract_tool import restore_model_object, save_model_object, extract_model_info, _solve_model
-from optichat.backend.tools.gamspy_extractor import extract_gamspy_model_info, save_gamspy_model, solve_gamspy_model
-from optichat.backend.tools.metadata_store import (load_metadata, save_metadata, save_model_data,
-                                           add_model_to_metadata)
 from optichat.backend.agents.expert.prompt import get_expert_agent_prompt
 from optichat.backend.agents.root.prompt import ANALYSIS_CONTENT_FEASIBLE, ANALYSIS_CONTENT_INFEASIBLE
 import re
-
-
-def format_models_metadata_for_prompt(historical_metadata: dict) -> str:
-    """
-    Format model metadata into human-readable string for prompt display.
-
-    Args:
-        historical_metadata: Dictionary of model metadata (tree structure)
-
-    Returns:
-        Formatted string with one line per model showing key information
-
-    Example output:
-        - supply_chain_model_3: Base model: supply_chain_model_3 (optimal)
-        - supply_chain_model_3__demand_3_1_plus10: What-if analysis: increased demand[3,0] by 10. Objective improved to 45.2. (optimal)
-    """
-    if not historical_metadata:
-        return "    No models available"
-
-    formatted_lines = []
-    
-    # Iterate through dates (sorted reverse)
-    for date_key in sorted(historical_metadata.keys(), reverse=True):
-        date_models = historical_metadata[date_key]
-        
-        # Iterate through base models
-        for base_name, base_data in date_models.items():
-            # Add base model
-            description = base_data.get("description", "Base model")
-            status = base_data.get("solution_status", "unknown")
-            line = f"    - {base_name}: {description} ({status})"
-            formatted_lines.append(line)
-            
-            # Add modified models
-            modified_models = base_data.get("modified_models", {})
-            for mod_name, mod_data in modified_models.items():
-                mod_desc = mod_data.get("description", "No description")
-                mod_status = mod_data.get("solution_status", "unknown")
-                mod_line = f"    - {mod_name}: {mod_desc} ({mod_status})"
-                formatted_lines.append(mod_line)
-
-    return "\n".join(formatted_lines)
 
 
 def _resolve_model_status(model_name: str, historical_metadata: dict) -> str:
@@ -92,7 +41,7 @@ def _resolve_model_status(model_name: str, historical_metadata: dict) -> str:
     return "unknown"
 
 
-def _update_selected_model_state(model_names, historical_metadata: dict, state: dict) -> None:
+def update_selected_model_state(model_names, historical_metadata: dict, state: dict) -> None:
     """
     Update all three model-selection state keys from a single call:
       - CURRENT_SELECTED_MODEL       : list of selected model names
@@ -128,487 +77,32 @@ def _update_selected_model_state(model_names, historical_metadata: dict, state: 
     logger.info(f"Selected model state updated: {model_names} (primary status: {primary_status})")
 
 
-def initialize_session_and_start_root_agent(callback_context: CallbackContext):
+def start_root_turn(callback_context: CallbackContext):
+    """Root agent before_agent_callback: reset the per-message state for a new message.
+
+    The chat itself is initialized before the root agent ever runs
+    (see optichat.backend.initialization).
     """
-    Wrapper callback for root agent before_agent_callback.
-    Calls initialize_session first, then starts root agent timing.
+    state = callback_context.state
+    state.update(TEMPORARY_STATES)
 
-    Args:
-        callback_context: Callback context with state
-
-    Returns:
-        None or Content (if initialization returns early)
-    """
-    # Call initialize_session
-    result = initialize_session(callback_context)
-    if result is not None:
-        return result
-
-    # Start root agent timing
-    timing_tracker.record_agent_start("root_agent")
-    return None
-
-
-def initialize_session(callback_context: CallbackContext):
-    if IS_SESSION_INITIALIZED not in callback_context.state:
-        callback_context.state.update(PERSISTENT_STATES)  # which also set IS_SESSION_INITIALIZED as False
-        callback_context.state.update(TEMPORARY_STATES)
-    
-    user_content = callback_context.user_content
-    # Handle case where user_content.parts might be empty or text is missing
-    user_query = ""
-    if user_content.parts:
-        user_query = user_content.parts[0].text or ""
-
-    parts_wo_json = []
-    cfg = {}
-    json_found = False
-
-    # Scan for JSON config
-    for part in user_content.parts:
-        if getattr(part, "inline_data", None) is not None and part.inline_data.mime_type == "application/json":
-            if callback_context.state[IS_SESSION_INITIALIZED]:
-                raise NotImplementedError("Session is already initialized, cannot re-initialize with a new cfg. Open a new session instead.")
-            else:
-                raw = part.inline_data.data
-                cfg = json.loads(raw.decode("utf-8"))
-                json_found = True
-        else:
-            parts_wo_json.append(part)
-
-    # Perform initialization if not done yet (either with found JSON or empty config)
-    if not callback_context.state[IS_SESSION_INITIALIZED]:
-        cfg = _init_cfg(cfg)
-        callback_context.state[CFG] = cfg
-        models_dictionary, current_model_versions, historical_metadata, load_errors = _init_models(cfg)
-        callback_context.state[MODEL_LOAD_ERRORS] = load_errors
-        if current_model_versions:
-            callback_context.state[CHAT_MODELING_LANGUAGE] = (
-                models_dictionary[current_model_versions[0]]["modeling_language"]
-            )
-        
-        # Available if we have loaded models OR historical metadata (lazy loading)
-        is_model_dictionary_available = len(models_dictionary) > 0 or len(historical_metadata) > 0
-        
-        callback_context.state[MODELS_DICTIONARY] = models_dictionary
-        # Only show current models (from config) to root agent, not historical ones
-        callback_context.state[MODEL_VERSIONS] = current_model_versions
-        # Store lightweight metadata for all models (for lazy loading)
-        callback_context.state[HISTORICAL_MODELS_METADATA] = historical_metadata
-        # Format metadata for prompt display
-        formatted_metadata = format_models_metadata_for_prompt(historical_metadata)
-        callback_context.state["MODELS_METADATA_FORMATTED"] = formatted_metadata
-        callback_context.state[IS_MODELS_DICTIONARY_AVAILABLE] = is_model_dictionary_available
-
-        # Set default selected models to all base models loaded in this session
-        if current_model_versions:
-            _update_selected_model_state(
-                current_model_versions, historical_metadata, callback_context.state
-            )
-
-        # If no models_paper provided, check if we need to generate synthetic description
-        if "models_paper" not in cfg and is_model_dictionary_available:
-            # Get model name from actual loaded version (not config)
-            # This ensures we use the version name extracted from the pickle file
-            model_name = current_model_versions[0] if current_model_versions else cfg.get("model_name", "model")
-
-            # Check for cached synthetic paper first
-            from optichat.backend.tools.metadata_store import get_cached_synthetic_paper
-            cached_paper_path = get_cached_synthetic_paper(model_name)
-
-            if cached_paper_path and os.path.exists(cached_paper_path):
-                logger.info(f"Using cached synthetic paper: {cached_paper_path}")
-            else:
-                # No cached paper - set flag for root agent to generate it
-                # Only if we actually have a current model to generate for
-                if current_model_versions:
-                    logger.info(f"No synthetic paper for {model_name}. Flagging for generation...")
-                    callback_context.state[NEED_SYNTHETIC_PAPER] = True
-                    callback_context.state[MODEL_FOR_PAPER_GENERATION] = model_name
-
-        callback_context.state[IS_SESSION_INITIALIZED] = True
-
-    # replace user_content with parts without json part (if a part has json, it cannot be processed)
-    callback_context.user_content.parts = parts_wo_json
-    # reset temporary states for every query
-    callback_context.state.update(TEMPORARY_STATES)
+    parts = callback_context.user_content.parts or []
+    user_query = (parts[0].text or "") if parts else ""
 
     # Parse [Using model: ...] prefix → update all model-selection state keys and strip from query
     selected_model_match = re.match(r'^\[Using model:\s*([^\]]+)\]\s*', user_query)
     if selected_model_match:
         model_names = [m.strip() for m in selected_model_match.group(1).split(",") if m.strip()]
-        _update_selected_model_state(
-            model_names, callback_context.state.get(HISTORICAL_MODELS_METADATA, {}), callback_context.state
-        )
+        update_selected_model_state(model_names, state.get(HISTORICAL_MODELS_METADATA, {}), state)
         user_query = user_query[selected_model_match.end():]
-
-    callback_context.state[USER_QUERY] = user_query
+    state[USER_QUERY] = user_query
 
     # Clear model components cache for new query
-    callback_context.state[MODEL_COMPONENTS_CACHE] = {}
-    logger.info("🔄 Model components cache cleared for new query")
+    state[MODEL_COMPONENTS_CACHE] = {}
 
-    # Reset timing tracker for new query
     timing_tracker.reset_tracker()
-    logger.info("⏱️  Timing tracker reset for new query")
-
+    timing_tracker.record_agent_start("root_agent")
     return None
-
-
-def _find_and_copy_source_file(version_name: str, cfg: dict) -> Optional[str]:
-    """
-    Find the .py source file for this model and copy it to tmp folder.
-    
-    Strategy:
-    1. Check models_code paths in config for {version}.py
-    2. If found, copy to <workspace>/model_objects/{version}.py
-    3. Return the copied path
-    
-    Args:
-        version_name: Model version name (e.g., 'RTN_inf_1')
-        cfg: Configuration dictionary
-    
-    Returns:
-        Path to the copied .py file, or None if not found
-    """
-    import shutil
-    
-    if "models_code" not in cfg:
-        logger.debug(f"No models_code in config, skipping source file copy for {version_name}")
-        return None
-    
-    # Look for source file in config paths
-    code_paths = cfg["models_code"].get("local_resources", [])
-    source_file = None
-    
-    for path in code_paths:
-        if "*" in path:
-            # Handle wildcard paths (e.g., "examples/*/*.py")
-            matches = glob.glob(path.replace("*", f"{version_name}"))
-            if matches:
-                source_file = matches[0]
-                logger.debug(f"Found source file via wildcard: {source_file}")
-                break
-        elif version_name in path and path.endswith(".py"):
-            # Direct path match
-            source_file = path
-            logger.debug(f"Found source file via direct match: {source_file}")
-            break
-    
-    if not source_file or not os.path.exists(source_file):
-        logger.warning(f"No .py source file found for {version_name}")
-        return None
-    
-    # Copy to <workspace>/model_objects
-    model_dir = workspace.model_objects_dir()
-    os.makedirs(model_dir, exist_ok=True)
-
-    # Directories for infeasibility diagnosis reports and robustness analysis outputs
-    os.makedirs(workspace.inf_detail_dir(), exist_ok=True)
-    os.makedirs(workspace.robust_dir(), exist_ok=True)
-
-    dest_path = os.path.join(model_dir, f"{version_name}.py")
-    
-    try:
-        shutil.copy2(source_file, dest_path)
-        logger.info(f"Copied source file: {source_file} -> {dest_path}")
-        return dest_path
-    except Exception as e:
-        logger.error(f"Failed to copy source file {source_file}: {e}")
-        return None
-
-def _find_model(module, py_file_path: str):
-    """
-    The model a .py file defines, and its modeling language ("Pyomo" or "GAMSPy").
-
-    Pyomo: the module's `model` if it is a ConcreteModel, else its only ConcreteModel.
-    GAMSPy: the module's only Model.
-    """
-    import gamspy as gp
-    import pyomo.environ as pyo
-
-    file_name = os.path.basename(py_file_path)
-    values = vars(module).values()
-    pyomo_models = {id(v): v for v in values if isinstance(v, pyo.ConcreteModel)}
-    gamspy_models = {id(v): v for v in values if isinstance(v, gp.Model)}
-
-    if pyomo_models and gamspy_models:
-        raise ValueError(f"{file_name} defines both Pyomo and GAMSPy models; it must define one model.")
-    if gamspy_models:
-        if len(gamspy_models) > 1:
-            raise ValueError(f"{file_name} must define one GAMSPy Model; found {len(gamspy_models)}.")
-        return next(iter(gamspy_models.values())), "GAMSPy"
-    candidate = getattr(module, "model", None)
-    if isinstance(candidate, pyo.ConcreteModel):
-        return candidate, "Pyomo"
-    if len(pyomo_models) == 1:
-        return next(iter(pyomo_models.values())), "Pyomo"
-    if not pyomo_models:
-        raise ValueError(f"{file_name} must define a Pyomo ConcreteModel or a GAMSPy Model; found neither.")
-    raise ValueError(
-        f"{file_name} defines {len(pyomo_models)} Pyomo ConcreteModels; "
-        "name the one to analyze `model`."
-    )
-
-
-def _load_model_from_py(py_file_path: str):
-    """
-    Load the optimization model defined by a .py file.
-
-    The file runs from its own directory (cwd and sys.path), so it reads the data
-    files next to it with relative paths, in whatever format and way it chooses;
-    nothing is injected into its namespace.
-
-    Args:
-        py_file_path: Path to the .py file containing the model definition
-
-    Returns:
-        Tuple of (model, version_name, modeling_language)
-    """
-    import importlib.util
-    import sys
-
-    base_dir = os.path.dirname(os.path.abspath(py_file_path))
-
-    # Create module from file.
-    # IMPORTANT: do NOT register in sys.modules before pickling.
-    # If cloudpickle sees the module in sys.modules it stores a lightweight
-    # reference ("module: loaded_model, fn: supply_rule") instead of the actual
-    # bytecode. That reference breaks across server restarts because sys.modules
-    # is wiped. By keeping the module out of sys.modules, cloudpickle is forced
-    # to serialize the full function bytecode into the .pkl, making it truly
-    # self-contained and loadable in future sessions without needing the .py file.
-    spec = importlib.util.spec_from_file_location("loaded_model", py_file_path)
-    loaded_module = importlib.util.module_from_spec(spec)
-
-    modules_before = set(sys.modules)
-    previous_cwd = os.getcwd()
-    sys.path.insert(0, base_dir)
-    os.chdir(base_dir)
-    try:
-        spec.loader.exec_module(loaded_module)
-    finally:
-        os.chdir(previous_cwd)
-        sys.path.remove(base_dir)
-        # Helper modules the model imported from its directory get the same treatment
-        # as the model module (pickled by value), and are not reused by another chat
-        # that has a different file with the same name.
-        for name in set(sys.modules) - modules_before:
-            module_file = getattr(sys.modules[name], "__file__", None) or ""
-            if os.path.abspath(module_file).startswith(base_dir + os.sep):
-                del sys.modules[name]
-
-    model, modeling_language = _find_model(loaded_module, py_file_path)
-    version = os.path.splitext(os.path.basename(py_file_path))[0]
-
-    return model, version, modeling_language
-
-
-def _describe_load_error(error: Exception, resource_path: str) -> str:
-    """'<file>, line N: Type: message', pointing at the model's own line when it raised."""
-    model_file = os.path.abspath(resource_path)
-    frames = [f for f in traceback.extract_tb(error.__traceback__)
-              if os.path.abspath(f.filename) == model_file]
-    where = os.path.basename(resource_path)
-    if frames:
-        where += f", line {frames[-1].lineno}"
-    return f"{where}: {type(error).__name__}: {error}"
-
-
-def _init_models(cfg: dict):
-    """
-    Initialize models with new architecture:
-    - Load lightweight metadata for all models
-    - Only load current models (from config) into models_dictionary
-    - Historical models loaded lazily on demand
-
-    Returns:
-        models_dictionary: Runtime cache with current models only
-        current_model_versions: List of current model versions (shown to root agent)
-        historical_metadata: Dict of all models metadata (for lazy loading)
-        load_errors: {model file name: description of why it could not be loaded}
-    """
-    # STEP 1: Load existing metadata (lightweight, always loaded)
-    metadata = load_metadata()
-    # In new structure, metadata IS the historical metadata (tree structure)
-    historical_metadata = metadata
-
-    if historical_metadata:
-        logger.info(f"Loaded metadata with {len(historical_metadata)} date entries")
-    else:
-        logger.info("No existing metadata found, starting fresh")
-
-    # STEP 2: Initialize current models from config
-    models_dictionary = {}  # Runtime cache for loaded models
-    load_errors = {}  # model file name -> why it could not be loaded
-    current_model_versions = []  # Models from config (shown to root agent)
-
-    if "models" in cfg:
-        is_solved = cfg["models"].get("is_solved", False)
-        is_lp = cfg["models"].get("is_lp", False)
-
-        for resource_path in cfg["models"].get("local_resources", []):
-            try:
-                # Check if this is .pkl (backward compat) or .py (new format)
-                if resource_path.endswith(".pkl"):
-                    # OLD PATH: Load from pickle
-                    logger.info(f"Loading model from pickle: {resource_path}")
-                    model, version = restore_model_object(resource_path)
-                    modeling_language = "Pyomo"
-                elif resource_path.endswith(".py"):
-                    # The model reads its own data files from its directory
-                    logger.info(f"Loading model from Python file: {resource_path}")
-                    model, version, modeling_language = _load_model_from_py(resource_path)
-                else:
-                    raise ValueError(f"Unsupported model file format: {resource_path}. Must be .pkl or .py")
-                logger.info(f"Detected modeling language: {modeling_language}")
-
-                if modeling_language == "GAMSPy":
-                    termination_condition = solve_gamspy_model(model)
-                    info = extract_gamspy_model_info(model, termination_condition)
-                    info.update({
-                        "local_path_to_object": save_gamspy_model(model, version),
-                        "gamspy_model_name": model.name,
-                    })
-                else:
-                    # Solve model (same for both formats)
-                    model, termination_condition = _solve_model(model, is_lp=is_lp, is_solved=is_solved)
-
-                    # Extract model information
-                    info = extract_model_info(model, termination_condition=termination_condition)
-                    local_path_to_object = save_model_object(model, version)
-                    info.update({"local_path_to_object": local_path_to_object})
-                info["modeling_language"] = modeling_language
-
-                # NEW: Copy .py source file to tmp if it exists
-                source_py_path = _find_and_copy_source_file(version, cfg)
-                if source_py_path:
-                    info.update({"source_file_path": source_py_path})
-
-                # Save full model data to individual file
-                save_model_data(version, info)
-
-                # Add to runtime cache
-                models_dictionary[version] = info
-                current_model_versions.append(version)
-
-                # Add/update metadata (base models get automatic description)
-                metadata = add_model_to_metadata(
-                    metadata=metadata,
-                    version_name=version,
-                    model_info=info,
-                    base_model=None,
-                    description=None,  # Will auto-generate "Base model: {version}"
-                    source_file_path=source_py_path  # NEW: track .py file path
-                )
-
-                # Update historical_metadata dict
-                historical_metadata = metadata
-                
-                logger.info(f"✓ Successfully loaded model: {version}")
-                
-            except Exception as e:
-                logger.error(f"Failed to load model from {resource_path}: {e}")
-                logger.exception("Full traceback:")
-                load_errors[os.path.basename(resource_path)] = _describe_load_error(e, resource_path)
-                # Continue to next model instead of failing entire initialization
-                continue
-
-        logger.info(f"Initialized {len(models_dictionary)} model(s) from config")
-
-    # STEP 3: Save updated metadata
-    if metadata:
-        save_metadata(metadata)
-        logger.info(f"Saved metadata")
-
-    logger.info(f"Current models (shown to root agent): {current_model_versions}")
-    
-    return models_dictionary, current_model_versions, historical_metadata, load_errors
-
-
-def _read_models_code_files(cfg: dict) -> Optional[str]:
-    """
-    Read and concatenate source code from models_code paths in config.
-
-    Args:
-        cfg: Configuration dictionary
-
-    Returns:
-        Concatenated source code string, or None if no code available
-    """
-    if "models_code" not in cfg:
-        return None
-
-    code_parts = []
-    paths = cfg["models_code"].get("local_resources", [])
-
-    for path in paths:
-        try:
-            # Handle wildcard paths (directories)
-            if path.endswith("*"):
-                # Expand to all .py files in directory
-                import glob as glob_module
-                py_files = glob_module.glob(path.replace("*", "*.py"))
-                for py_file in py_files:
-                    try:
-                        with open(py_file, 'r', encoding='utf-8') as f:
-                            code_parts.append(f"# File: {py_file}\n{f.read()}")
-                    except Exception as e:
-                        logger.warning(f"Could not read code file {py_file}: {e}")
-            else:
-                # Single .py file
-                with open(path, 'r', encoding='utf-8') as f:
-                    code_parts.append(f"# File: {path}\n{f.read()}")
-
-        except Exception as e:
-            logger.warning(f"Could not read code from {path}: {e}")
-
-    if not code_parts:
-        return None
-
-    return "\n\n".join(code_parts)
-
-
-def _init_cfg(cfg: dict):
-    cfg_out = deepcopy(cfg)
-    
-    required_sections = ["models", "models_code", "models_paper"]
-    extension_filters = {
-        "models": [".pkl", ".py"],  # Support both .pkl (old) and .py (new separated format)
-        "models_code": [".py"],
-        "models_paper": [".txt", ".pdf"]
-    }
-
-    for section_key, section_cfg in cfg.items():
-        if section_key in required_sections:
-            local_resources = section_cfg.get("local_resources", [])
-            allowed_extensions = extension_filters.get(section_key, None)
-            expanded_resources = _expand_resources(local_resources, allowed_extensions)
-            cfg_out[section_key]["local_resources"] = expanded_resources
-    return cfg_out
-
-
-def _expand_resources(local_resources: List[str], allowed_extensions: Optional[List[str]]):
-    """
-    Expand wildcard * patterns with allowed extensions filtering
-    """
-    expanded_resources = []
-    for resource_path in local_resources:
-        if "*" in resource_path:
-            matches = glob.glob(resource_path)
-        else:
-            matches = [resource_path]
-        if not matches:
-            raise FileNotFoundError(f"No files matched: {resource_path}")
-        if allowed_extensions:
-            filtered_matches = [
-                match for match in matches 
-                    if any(match.lower().endswith(ext) for ext in allowed_extensions)
-                    ]
-        else:
-            filtered_matches = matches
-        expanded_resources.extend(sorted(filtered_matches))
-    return expanded_resources
 
 
 def check_is_expert_agent_used(callback_context: CallbackContext):
@@ -656,23 +150,6 @@ def check_llm_request(callback_context: CallbackContext, llm_request: LlmRequest
 
     # Start timing for LLM call
     callback_context.state[LLM_CALL_START_TIME] = time.time()
-
-    # The session-initialization config upload (application/json) is persisted with
-    # the session history; it must never be replayed to the LLM as a file attachment.
-    kept_contents = []
-    for content in llm_request.contents:
-        content.parts = [
-            part for part in (content.parts or [])
-            if not (part.inline_data and part.inline_data.mime_type == "application/json")
-        ]
-        if content.parts:
-            kept_contents.append(content)
-    llm_request.contents = kept_contents
-    if not kept_contents and not callback_context.state.get(NEED_SYNTHETIC_PAPER, False):
-        # Nothing but the config upload: initialization only, no reply to generate.
-        # (When the model still needs its description, the root agent's first LLM
-        # call generates it, so that call must go through.)
-        return LlmResponse()
 
     original_instruction = llm_request.config.system_instruction or types.Content(role="system", parts=[])
     # Ensure system_instruction is Content and parts list exists
@@ -1252,84 +729,8 @@ def check_tool_response(tool: BaseTool,
     
     return None  # Return None to indicate no modification to tool_response
 
-def diagnose_if_infeasible(callback_context: CallbackContext):
-    """
-    Run infeasibility diagnosis before illustrator generates description.
-
-    This callback is triggered when the illustrator agent starts processing.
-    If the model is infeasible, it automatically runs the infeasibility diagnosis
-    and stores the results in state for the illustrator to access.
-
-    Args:
-        callback_context: Callback context with state
-
-    Returns:
-        None (modifies state in-place)
-    """
-    from pyomo.opt import TerminationCondition
-
-    # Record illustrator agent start
+def start_illustrator_timing(callback_context: CallbackContext):
     timing_tracker.record_agent_start("illustrator_agent")
-
-    # Get model information
-    model_name = callback_context.state.get(MODEL_FOR_PAPER_GENERATION, "")
-    models_dict = callback_context.state.get(MODELS_DICTIONARY, {})
-
-    if not model_name or model_name not in models_dict:
-        logger.warning("[DIAGNOSE_IF_INFEASIBLE] No model to diagnose or model not found")
-        callback_context.state[HAS_INFEASIBILITY_DIAGNOSIS] = False
-        return None
-
-    # Check model status
-    model_info = models_dict.get(model_name, {})
-    status = model_info.get("obj", {}).get("sol_status", "unknown")
-
-    logger.info(f"[DIAGNOSE_IF_INFEASIBLE] Model '{model_name}' status: {status}")
-
-    # Check if infeasible
-    is_infeasible = (
-        status == TerminationCondition.infeasible or
-        status == TerminationCondition.infeasibleOrUnbounded or
-        str(status) == "infeasible" or
-        str(status) == "infeasibleOrUnbounded"
-    )
-
-    if is_infeasible:
-        logger.info(f"[DIAGNOSE_IF_INFEASIBLE] Model '{model_name}' is INFEASIBLE. Running diagnosis...")
-
-        try:
-            # Import diagnosis tool
-            from optichat.backend.tools.custom_tool import infeasibility_diagnosis
-
-            # Pass callback_context directly - both CallbackContext and ToolContext have .state
-            # The diagnosis function only accesses .state, so this works via duck typing
-            diagnosis_result = infeasibility_diagnosis(model_name, callback_context)
-
-            # Update state with diagnosis results
-            callback_context.state[INFEASIBILITY_DIAGNOSIS] = diagnosis_result
-            callback_context.state[HAS_INFEASIBILITY_DIAGNOSIS] = True
-
-            # Note: callback_context.state is already modified in-place by infeasibility_diagnosis
-            # so MODELS_DICTIONARY already contains any new relaxed model versions
-
-            logger.info("[DIAGNOSE_IF_INFEASIBLE] ✓ Diagnosis completed successfully")
-            logger.info(f"[DIAGNOSE_IF_INFEASIBLE] Diagnosis status: {diagnosis_result.get('status', 'unknown')}")
-
-        except Exception as e:
-            logger.error(f"[DIAGNOSE_IF_INFEASIBLE] Failed to run diagnosis: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
-
-            # Store error information
-            callback_context.state[INFEASIBILITY_DIAGNOSIS] = {
-                "status": "error",
-                "result": f"Diagnosis failed: {str(e)}"
-            }
-            callback_context.state[HAS_INFEASIBILITY_DIAGNOSIS] = True
-    else:
-        logger.info(f"[DIAGNOSE_IF_INFEASIBLE] Model '{model_name}' is FEASIBLE. No diagnosis needed.")
-        callback_context.state[HAS_INFEASIBILITY_DIAGNOSIS] = False
-
     return None
 
 
@@ -1344,22 +745,6 @@ def check_illustrator_agent_runtime(callback_context: CallbackContext):
         None
     """
     timing_tracker.record_agent_end("illustrator_agent")
-    return None
-
-
-def check_root_agent_start(callback_context: CallbackContext):
-    """
-    Record root agent start before agent processes request.
-
-    This is called AFTER initialize_session, so tracker is already reset.
-
-    Args:
-        callback_context: Callback context with state
-
-    Returns:
-        None
-    """
-    timing_tracker.record_agent_start("root_agent")
     return None
 
 
@@ -1396,61 +781,4 @@ def check_root_agent_runtime(callback_context: CallbackContext):
 
     return None
 
-
-def handle_illustrator_response(tool: BaseTool,
-                                args: Dict[str, Any],
-                                tool_context: ToolContext,
-                                tool_response: Dict):
-    """
-    Handle response from illustrator_agent tool.
-
-    When illustrator completes, save the generated description as a synthetic paper
-    and initialize paper_rag with it.
-
-    Args:
-        tool: The tool that was executed (should be illustrator_agent)
-        args: Arguments passed to the tool
-        tool_context: Tool context with state
-        tool_response: Response from the tool containing the generated description
-    """
-    # Only process if this is the illustrator_agent
-    if tool.name != "illustrator_agent":
-        return None
-
-    logger.info("[ILLUSTRATOR_CALLBACK] Processing illustrator agent response...")
-
-    try:
-        # Extract the generated description
-        if isinstance(tool_response, dict):
-            result = tool_response.get("result", "")
-        else:
-            result = str(tool_response)
-        if not result or len(result.strip()) == 0:
-            logger.warning("[ILLUSTRATOR_CALLBACK] Illustrator returned empty description")
-            return None
-
-        # Get model name from state
-        model_name = tool_context.state.get(MODEL_FOR_PAPER_GENERATION, "unknown_model")
-        logger.info(f"[ILLUSTRATOR_CALLBACK] Saving description for model: {model_name}")
-        logger.info(f"[ILLUSTRATOR_CALLBACK] Description length: {len(result)} characters")
-
-        # Save as synthetic paper
-        from optichat.backend.tools.illustrator_tool import save_synthetic_paper
-        from optichat.backend.tools.metadata_store import save_synthetic_paper_path
-
-        paper_path = save_synthetic_paper(description=result, model_name=model_name)
-
-        # Cache path in metadata
-        save_synthetic_paper_path(model_name, paper_path)
-
-        tool_context.state[NEED_SYNTHETIC_PAPER] = False
-
-        logger.info("[ILLUSTRATOR_CALLBACK] ✓ Synthetic paper saved successfully")
-
-    except Exception as e:
-        logger.error(f"[ILLUSTRATOR_CALLBACK] Failed to process illustrator response: {e}")
-        import traceback
-        logger.debug(traceback.format_exc())
-
-    return None  # Return None to indicate no modification to tool_response
 

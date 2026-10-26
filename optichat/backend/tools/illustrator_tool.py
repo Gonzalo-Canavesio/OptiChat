@@ -7,8 +7,7 @@ from google.adk.tools.tool_context import ToolContext
 from optichat.backend.config import workspace
 from optichat.backend.config.constants import (
     MODELS_DICTIONARY,
-    MODEL_FOR_PAPER_GENERATION,
-    CFG,
+    MODEL_VERSIONS,
     HAS_INFEASIBILITY_DIAGNOSIS,
     INFEASIBILITY_DIAGNOSIS
 )
@@ -687,7 +686,7 @@ def _make_serializable(obj):
 
 def get_model_info_for_description(request: str, tool_context: ToolContext) -> str:
     """
-    Retrieve model components and code from session state for description generation.
+    Retrieve the primary model's components from session state for description generation.
 
     This tool is specifically for the illustrator agent to access the model information
     it needs to generate a comprehensive description.
@@ -697,7 +696,8 @@ def get_model_info_for_description(request: str, tool_context: ToolContext) -> s
         tool_context: Tool context containing session state
 
     Returns:
-        Formatted string containing model components and optionally source code
+        Formatted string containing model components and, for infeasible models, the
+        infeasibility diagnosis
 
     Example:
         >>> info = get_model_info_for_description("generate", context)
@@ -707,8 +707,7 @@ def get_model_info_for_description(request: str, tool_context: ToolContext) -> s
     try:
         # Retrieve model information from state
         models_dictionary = tool_context.state.get(MODELS_DICTIONARY, {})
-        model_name = tool_context.state.get(MODEL_FOR_PAPER_GENERATION, "unknown_model")
-        cfg = tool_context.state.get(CFG, {})
+        model_name = tool_context.state[MODEL_VERSIONS][0]
 
         logger.info(f"[ILLUSTRATOR_TOOL] Retrieving model info for: {model_name}")
         
@@ -774,18 +773,6 @@ def get_model_info_for_description(request: str, tool_context: ToolContext) -> s
             formatted_components,
             "\n```"
         ]
-
-        # Add source code if available
-        models_code_cfg = cfg.get("models_code", {})
-        if models_code_cfg and "local_resources" in models_code_cfg:
-            code_files = models_code_cfg["local_resources"]
-            logger.info(f"[ILLUSTRATOR_TOOL] Source code files available: {code_files}")
-            response_parts.append(f"\n\n## Source Code Files\n")
-            response_parts.append(f"Available code files: {', '.join(code_files)}")
-            response_parts.append("\n(Code content can be retrieved if needed)")
-        else:
-            logger.info("[ILLUSTRATOR_TOOL] No source code available")
-            response_parts.append("\n\n## Source Code\n(Source code not provided)")
 
         # Add infeasibility diagnosis if available
         has_diagnosis = tool_context.state.get(HAS_INFEASIBILITY_DIAGNOSIS, False)

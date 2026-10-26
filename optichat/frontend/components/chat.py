@@ -24,7 +24,7 @@ def _handle_create_chat_submission(
         return False
 
     try:
-        with st.spinner("Initializing model and starting chat..."):
+        with st.spinner("Loading the model and describing it..."):
             chat = create_chat(
                 model_file=model_file,
                 data_files=data_files,
@@ -62,7 +62,7 @@ def render_create_chat_dialog() -> None:
         )
         chat_name = st.text_input(
             "Chat name (Optional)",
-            help="Leave empty for auto-generated name.",
+            help="Leave empty to name the chat after the problem the model solves.",
         )
         model_paper = st.file_uploader(
             "Model paper (Optional)",

@@ -1,10 +1,11 @@
 import asyncio
-import json
 import logging
 import os
 import re
 import shutil
 import uuid
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -16,11 +17,21 @@ from google.genai import types
 from loguru import logger
 from pydantic import BaseModel
 
+from optichat.backend.agents.illustrator.agent import create_illustrator_agent
+from optichat.backend.agents.illustrator.description import (
+    DescriptionError,
+    describe_model,
+)
 from optichat.backend.agents.root.agent import create_root_agent
+from optichat.backend.agents.root.prompt import (
+    build_initial_summary_request,
+    is_initial_summary_request,
+)
 from optichat.backend.config.constants import (
+    CHAT_CREATED_AT,
+    CHAT_LANGUAGE,
     CHAT_MODELING_LANGUAGE,
-    MODEL_LOAD_ERRORS,
-    MODEL_VERSIONS,
+    CHAT_NAME,
 )
 from optichat.backend.config.solver import (
     SolverNotAvailableError,
@@ -30,7 +41,9 @@ from optichat.backend.config.solver import (
     use_solver,
 )
 from optichat.backend.config.workspace import use_workspace
+from optichat.backend.initialization import ModelLoadError, initialize_chat
 from optichat.backend.tools.timing_tracker import use_tracker
+from optichat.llm.catalog import accepts_pdf
 from optichat.llm.models import ProfileConfig
 from optichat.llm.profiles import get_llm_profile_by_label
 
@@ -75,9 +88,16 @@ def _get_profile(label: str) -> ProfileConfig:
 
 def _get_root_agent(profile: ProfileConfig, solver: str):
     """One agent tree per (profile settings, solver); rebuilt if the profile changes."""
-    key = f"{profile.model_dump_json()}|{solver}"
+    key = f"root|{profile.model_dump_json()}|{solver}"
     if key not in _agents:
         _agents[key] = create_root_agent(profile, workflow="default")
+    return _agents[key]
+
+
+def _get_illustrator_agent(profile: ProfileConfig):
+    key = f"illustrator|{profile.model_dump_json()}"
+    if key not in _agents:
+        _agents[key] = create_illustrator_agent(profile)
     return _agents[key]
 
 
@@ -104,6 +124,17 @@ def _prepare_run(profile_label: str, solver_label: str, modeling_language: str |
     return profile, solver
 
 
+@contextmanager
+def _chat_context(chat_id: str, solver: str) -> Generator[None]:
+    """The chat's workspace, solver and timing tracker, for initialization and runs."""
+    with (
+        use_workspace(CHATS_DIR / chat_id / "artifacts"),
+        use_solver(solver),
+        use_tracker(),
+    ):
+        yield
+
+
 async def _run_agent(chat_id: str, content: types.Content, profile, solver) -> None:
     runner = Runner(
         app_name=APP_NAME,
@@ -111,11 +142,7 @@ async def _run_agent(chat_id: str, content: types.Content, profile, solver) -> N
         session_service=sessions,
     )
     try:
-        with (
-            use_workspace(CHATS_DIR / chat_id / "artifacts"),
-            use_solver(solver),
-            use_tracker(),
-        ):
+        with _chat_context(chat_id, solver):
             async for _ in runner.run_async(
                 user_id=USER_ID, session_id=chat_id, new_message=content
             ):
@@ -150,9 +177,9 @@ def _chat_summary(session: Session) -> dict[str, Any]:
     return {
         "models": _loaded_models(state),
         "id": session.id,
-        "name": state.get("chat_name", session.id),
-        "modeling_language": state.get(CHAT_MODELING_LANGUAGE),
-        "created_at": state.get("chat_created_at"),
+        "name": state[CHAT_NAME],
+        "modeling_language": state[CHAT_MODELING_LANGUAGE],
+        "created_at": state[CHAT_CREATED_AT],
     }
 
 
@@ -164,10 +191,8 @@ def _chat_messages(session: Session) -> list[dict[str, Any]]:
     for event in session.events:
         parts = event.content.parts if event.content and event.content.parts else []
         if event.author == "user":
-            if any(p.inline_data for p in parts):  # the config upload, not a message
-                continue
             text = "".join(p.text or "" for p in parts).strip()
-            if text:
+            if text and not is_initial_summary_request(text):
                 messages.append({"role": "user", "content": text})
             current = None
             continue
@@ -211,8 +236,8 @@ def _save_upload(upload: UploadFile, directory: Path) -> Path:
     return path
 
 
-def _build_config(model: Path, paper: Path | None) -> dict[str, Any]:
-    cfg: dict[str, Any] = {
+def _build_config(model: Path) -> dict[str, Any]:
+    return {
         "model_name": model.stem,
         "models": {
             "local_resources": [str(model)],
@@ -221,9 +246,6 @@ def _build_config(model: Path, paper: Path | None) -> dict[str, Any]:
         },
         "models_code": {"local_resources": [str(model)]},
     }
-    if paper:
-        cfg["models_paper"] = {"local_resources": [str(paper)]}
-    return cfg
 
 
 @app.get("/chats")
@@ -259,6 +281,8 @@ async def create_chat(
 
     async with _run_lock:
         profile, solver_key = _prepare_run(profile_label, solver, None)
+        if model_paper:
+            _check_paper_format(model_paper, profile)
 
         chat_id = uuid.uuid4().hex[:12]
         chat_dir = CHATS_DIR / chat_id
@@ -270,48 +294,36 @@ async def create_chat(
             paper = (
                 _save_upload(model_paper, chat_dir / "paper") if model_paper else None
             )
-            cfg = _build_config(model, paper)
-        except Exception:
+            with _chat_context(chat_id, solver_key):
+                chat = initialize_chat(_build_config(model))
+                description = await describe_model(
+                    _get_illustrator_agent(profile), chat, paper
+                )
+        except Exception as e:
             shutil.rmtree(chat_dir, ignore_errors=True)
-            raise
+            raise _creation_error(e) from e
 
-        name = re.sub(r"\s+", " ", chat_name).strip() or (
-            f"{model.stem} · {datetime.now():%b %d %H:%M}"
-        )
         await sessions.create_session(
             app_name=APP_NAME,
             user_id=USER_ID,
             session_id=chat_id,
             state={
-                "chat_name": name,
-                "chat_created_at": datetime.now().isoformat(timespec="seconds"),
+                **chat.state,
+                CHAT_NAME: re.sub(r"\s+", " ", chat_name).strip() or description.title,
+                CHAT_LANGUAGE: description.language,
+                CHAT_CREATED_AT: datetime.now().isoformat(timespec="seconds"),
             },
         )
-
-        init = types.Content(
-            role="user",
-            parts=[
-                types.Part(
-                    text="Initialize session with config",
-                    inline_data=types.Blob(
-                        mime_type="application/json",
-                        data=json.dumps(cfg).encode("utf-8"),
-                    ),
-                )
-            ],
+        summary_request = build_initial_summary_request(
+            description.narrative, description.language
         )
         try:
-            await _run_agent(chat_id, init, profile, solver_key)
-            session = await _get_session(chat_id)
-            if not session.state.get(MODEL_VERSIONS):
-                errors = session.state.get(MODEL_LOAD_ERRORS) or {}
-                cause = "; ".join(errors.values()) or "see the backend log for details"
-                raise HTTPException(
-                    422,
-                    f"The model could not be loaded ({cause}). Check that the .py "
-                    "file defines a Pyomo or GAMSPy model and that every data file "
-                    "it reads was uploaded.",
-                )
+            await _run_agent(
+                chat_id,
+                types.Content(role="user", parts=[types.Part(text=summary_request)]),
+                profile,
+                solver_key,
+            )
         except Exception:
             await sessions.delete_session(
                 app_name=APP_NAME, user_id=USER_ID, session_id=chat_id
@@ -322,10 +334,38 @@ async def create_chat(
     return await _chat_detail(chat_id)
 
 
+def _check_paper_format(paper: UploadFile, profile: ProfileConfig) -> None:
+    """A PDF paper is sent as is to the illustrator, so its model must accept PDFs."""
+    model = profile.illustrator_agent.llm_model
+    if Path(paper.filename or "").suffix.lower() == ".pdf" and not accepts_pdf(model):
+        raise HTTPException(
+            422,
+            f"The illustrator model of the profile '{profile.label}' ({model}) does "
+            "not accept PDF files. Upload the paper as a .md or .txt file, or use a "
+            "profile whose illustrator model accepts PDFs.",
+        )
+
+
+def _creation_error(error: Exception) -> HTTPException:
+    if isinstance(error, ModelLoadError):
+        return HTTPException(
+            422,
+            f"The model could not be loaded ({error}). Check that the .py file "
+            "defines a Pyomo or GAMSPy model and that every data file it reads was "
+            "uploaded.",
+        )
+    if isinstance(error, DescriptionError):
+        return HTTPException(
+            502, f"The model description could not be generated: {error}"
+        )
+    logger.opt(exception=error).error("Chat creation failed")
+    return HTTPException(500, f"{type(error).__name__}: {error}")
+
+
 @app.post("/chats/{chat_id}/messages")
 async def send_message(chat_id: str, request: MessageRequest) -> dict[str, Any]:
     session = await _get_session(chat_id)
-    modeling_language = session.state.get(CHAT_MODELING_LANGUAGE, "Pyomo")
+    modeling_language = session.state[CHAT_MODELING_LANGUAGE]
     async with _run_lock:
         profile, solver = _prepare_run(
             request.profile_label, request.solver, modeling_language

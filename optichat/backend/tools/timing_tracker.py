@@ -259,7 +259,7 @@ class TimingTracker:
 # its own list (`use_tracker`); tools running in worker threads see a copy of the
 # context that still points to the same list, so a reset made there is not lost.
 _tracker_holder: ContextVar[list | None] = ContextVar("optichat_timing_tracker", default=None)
-_default_holder: list = []  # used outside the chat API (adk web, evals)
+_default_holder: list = []  # used outside an agent run (e.g. tools called directly)
 
 
 @contextmanager

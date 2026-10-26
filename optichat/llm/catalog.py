@@ -36,6 +36,11 @@ def _can_run_agents(model: str) -> bool:
     )
 
 
+def accepts_pdf(model: str) -> bool:
+    """Whether LiteLLM knows `model` accepts PDF files as input."""
+    return bool(_litellm_model_info(model).get("supports_pdf_input"))
+
+
 def fetch_agent_models(provider: str, api_key: str) -> list[str]:
     """The models `api_key` can use that the agents can run on.
 
