@@ -8,7 +8,9 @@ class LLMCredential(BaseModel):
     provider: str = Field(
         ..., description="The name of the LLM provider (e.g., OpenAI, Anthropic)."
     )
-    api_key: str = Field(..., description="The API key for the LLM provider.")
+    api_key: str | None = Field(
+        ..., description="The API key, for the providers that need one."
+    )
 
 
 class AgentConfig(BaseModel):

@@ -44,6 +44,7 @@ from optichat.backend.config.workspace import use_workspace
 from optichat.backend.initialization import ModelLoadError, initialize_chat
 from optichat.backend.tools.timing_tracker import use_tracker
 from optichat.llm.catalog import accepts_pdf
+from optichat.llm.credentials import get_llm_credential_by_label
 from optichat.llm.models import ProfileConfig
 from optichat.llm.profiles import get_llm_profile_by_label
 
@@ -336,8 +337,18 @@ async def create_chat(
 
 def _check_paper_format(paper: UploadFile, profile: ProfileConfig) -> None:
     """A PDF paper is sent as is to the illustrator, so its model must accept PDFs."""
+    if Path(paper.filename or "").suffix.lower() != ".pdf":
+        return
+    label = profile.illustrator_agent.credential_label
+    credential = get_llm_credential_by_label(label)
+    if credential is None:
+        raise HTTPException(
+            422,
+            f"The connection '{label}' of the profile '{profile.label}' is not "
+            "configured.",
+        )
     model = profile.illustrator_agent.llm_model
-    if Path(paper.filename or "").suffix.lower() == ".pdf" and not accepts_pdf(model):
+    if not accepts_pdf(credential, model):
         raise HTTPException(
             422,
             f"The illustrator model of the profile '{profile.label}' ({model}) does "

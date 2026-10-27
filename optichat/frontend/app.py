@@ -24,7 +24,7 @@ def run_interface() -> None:
         render_chat_view()
 
     if not get_llm_credentials():
-        st.dialog(title="Add your first API key", dismissible=False)(
+        st.dialog(title="Add your first connection", dismissible=False)(
             render_llm_credential_form
         )()
     elif not get_llm_profiles():

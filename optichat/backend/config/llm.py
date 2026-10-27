@@ -13,18 +13,17 @@ PROFILE_ENV_VAR = "OPTICHAT_PROFILE"
 def get_litellm_params(agent_config: AgentConfig) -> dict[str, Any]:
     """Resolve an agent's credential/model settings into LiteLLM completion kwargs."""
     if not agent_config.enabled:
-        raise ValueError("The agent has no API key and model configured.")
+        raise ValueError("The agent has no connection and model configured.")
 
     credential = get_llm_credential_by_label(agent_config.credential_label)
     if credential is None:
         raise ValueError(
-            f"The API key '{agent_config.credential_label}' is not configured."
+            f"The connection '{agent_config.credential_label}' is not configured."
         )
 
-    params: dict[str, Any] = {
-        "model": agent_config.llm_model,
-        "api_key": credential.api_key,
-    }
+    params: dict[str, Any] = {"model": agent_config.llm_model}
+    if credential.api_key:
+        params["api_key"] = credential.api_key
     if agent_config.temperature is not None:
         params["temperature"] = agent_config.temperature
     if agent_config.max_tokens is not None:

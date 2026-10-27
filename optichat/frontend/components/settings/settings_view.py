@@ -26,12 +26,12 @@ def _render_credential_item(credential: LLMCredential) -> None:
             if st.button(
                 "",
                 key=f"edit_credential_btn_{credential.label}",
-                help="Edit this API key's label.",
+                help="Edit this connection's label.",
                 width="stretch",
                 icon=":material/edit:",
             ):
                 st.dialog(
-                    title=f"Edit API Key: {credential.label}",
+                    title=f"Edit Connection: {credential.label}",
                     width="medium",
                 )(render_llm_credential_form)(credential)
 
@@ -39,7 +39,7 @@ def _render_credential_item(credential: LLMCredential) -> None:
             if st.button(
                 "",
                 key=f"delete_credential_btn_{credential.label}",
-                help="Delete this API key.",
+                help="Delete this connection.",
                 width="stretch",
                 icon=":material/delete:",
             ):
@@ -47,15 +47,20 @@ def _render_credential_item(credential: LLMCredential) -> None:
 
 
 def _render_credentials_section() -> None:
-    st.text("Manage your API keys below. You can add, edit, or delete API keys.")
+    st.text(
+        "Manage your connections to LLM providers below. You can add, edit, or "
+        "delete connections."
+    )
     if st.button(
-        "New API Key",
+        "New Connection",
         type="primary",
-        help="Add a new API key.",
+        help="Add a new connection.",
         width="stretch",
         icon=":material/add:",
     ):
-        st.dialog(title="Add New API Key", width="medium")(render_llm_credential_form)()
+        st.dialog(title="Add New Connection", width="medium")(
+            render_llm_credential_form
+        )()
 
     for credential in get_llm_credentials():
         _render_credential_item(credential)
@@ -121,18 +126,18 @@ def render_settings_view() -> None:
         state.current_view = "chat"
         st.rerun()
 
-    st.title("Manage API Keys & Profiles")
+    st.title("Manage Connections & Profiles")
     mode = st.segmented_control(
         "Settings Mode",
-        ["API Keys", "LLM Profiles"],
-        default="API Keys",
+        ["Connections", "LLM Profiles"],
+        default="Connections",
         key="settings_mode",
         required=True,
         width="stretch",
         label_visibility="collapsed",
     )
 
-    if mode == "API Keys":
+    if mode == "Connections":
         _render_credentials_section()
     elif mode == "LLM Profiles":
         _render_profiles_section()

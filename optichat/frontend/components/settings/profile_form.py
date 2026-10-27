@@ -11,7 +11,7 @@ from optichat.llm.profiles import (
     remove_llm_profile,
     update_llm_profile,
 )
-from optichat.llm.providers import ProviderVerificationError
+from optichat.llm.providers.base import ProviderVerificationError
 
 
 def _get_credential_index(
@@ -30,14 +30,14 @@ def _model_options(credential: LLMCredential | None) -> list[str]:
     if not credential:
         return []
     try:
-        models = fetch_agent_models(credential.provider, credential.api_key)
+        models = fetch_agent_models(credential)
     except ProviderVerificationError as e:
         st.warning(f"No models to choose from for **{credential.label}**. {e}")
         return []
     if not models:
         st.warning(
-            f"No models to choose from for **{credential.label}**. This API key has "
-            "no chat models that support tool calling, which the agents need."
+            f"No models to choose from for **{credential.label}**. This connection "
+            "has no chat models that support tool calling, which the agents need."
         )
     return models
 
@@ -79,12 +79,12 @@ def _render_simple_mode_fields(
         initial_credential_idx = None
 
     selected_credential = st.selectbox(
-        "API Key (Required)",
+        "Connection (Required)",
         options=get_llm_credentials(),
         format_func=lambda c: f"{c.label} ({c.provider})",
         index=initial_credential_idx,
         key="simple_credential_selectbox",
-        help="Choose the API key the agents will use.",
+        help="Choose the connection the agents will use.",
     )
 
     assert isinstance(selected_credential, LLMCredential) or selected_credential is None
@@ -121,11 +121,11 @@ def _render_advanced_mode_agent_fields(
     )
 
     selected_credential = st.selectbox(
-        f"API Key for {agent_label} (Required)",
+        f"Connection for {agent_label} (Required)",
         options=get_llm_credentials(),
         format_func=lambda c: f"{c.label} ({c.provider})",
         index=initial_credential_idx,
-        help=f"Choose the API key the {agent_label} will use.",
+        help=f"Choose the connection the {agent_label} will use.",
         key=f"{agent_label}_credential_selectbox",
     )
 
@@ -227,7 +227,7 @@ def _build_simple_profile(
     selected_model: str | None,
 ) -> ProfileConfig | None:
     if not selected_credential or not selected_model:
-        st.error("Please provide both the API key and model before saving.")
+        st.error("Please provide both the connection and model before saving.")
         return None
 
     agent_config = AgentConfig(
@@ -257,7 +257,7 @@ def _build_advanced_profile(
 
         if not credential or not model:
             st.error(
-                f"Please provide both the API key and model for {agent_label} "
+                f"Please provide both the connection and model for {agent_label} "
                 "before saving."
             )
             return None
