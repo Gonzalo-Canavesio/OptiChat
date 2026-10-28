@@ -7,6 +7,8 @@ from optichat.llm.profiles import get_llm_profiles
 
 
 def render_sidebar() -> None:
+    locked = state.is_waiting_response
+
     st.selectbox(
         "Select LLM Profile",
         options=[p for p in get_llm_profiles() if p.enabled],
@@ -14,9 +16,10 @@ def render_sidebar() -> None:
         index=None,
         key="profile_selectbox",
         help="Choose the LLM profile for your optimization problem.",
+        disabled=locked,
     )
 
-    if st.button("Manage Connections & Profiles", width="stretch"):
+    if st.button("Manage Connections & Profiles", width="stretch", disabled=locked):
         state.current_view = "settings"
         st.rerun()
 
@@ -26,11 +29,18 @@ def render_sidebar() -> None:
         index=None,
         key="solver_selectbox",
         help="Select the optimization solver used to solve the model.",
+        disabled=locked,
     )
 
     st.divider()
 
-    if st.button("New Chat", width="stretch", icon=":material/add:", type="primary"):
+    if st.button(
+        "New Chat",
+        width="stretch",
+        icon=":material/add:",
+        type="primary",
+        disabled=locked,
+    ):
         if not state.selected_profile:
             st.error("Please select an LLM profile in the sidebar first.")
         if not state.selected_solver:
@@ -52,6 +62,7 @@ def render_sidebar() -> None:
             type="secondary"
             if state.current_chat and chat["id"] == state.current_chat["id"]
             else "tertiary",
+            disabled=locked,
         ):
             try:
                 state.current_chat = fetch_chat(chat["id"])

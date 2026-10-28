@@ -156,27 +156,9 @@ async def _run_agent(chat_id: str, content: types.Content, profile, solver) -> N
 # --------------------------------------------------------------------- chat data
 
 
-def _loaded_models(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Name, solve status and objective of the models this chat was created with."""
-    dictionary = state.get("MODELS_DICTIONARY") or {}
-    loaded = []
-    for name in state.get("MODEL_VERSIONS") or []:
-        objective = (dictionary.get(name) or {}).get("obj") or {}
-        loaded.append(
-            {
-                "name": name,
-                "status": objective.get("sol_status", "unknown"),
-                "objective": objective.get("value"),
-                "sense": objective.get("sense"),
-            }
-        )
-    return loaded
-
-
 def _chat_summary(session: Session) -> dict[str, Any]:
     state = session.state
     return {
-        "models": _loaded_models(state),
         "id": session.id,
         "name": state[CHAT_NAME],
         "modeling_language": state[CHAT_MODELING_LANGUAGE],

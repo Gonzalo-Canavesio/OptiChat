@@ -2,12 +2,7 @@ import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from optichat.frontend.api.client import BackendError, create_chat, send_message
-from optichat.frontend.state import (
-    ChatInfo,
-    ChatMessage,
-    LoadedModel,
-    state,
-)
+from optichat.frontend.state import ChatInfo, ChatMessage, state
 from optichat.llm.models import ProfileConfig
 
 
@@ -58,7 +53,7 @@ def render_create_chat_dialog() -> None:
             accept_multiple_files=True,
             help="Files the model reads, in any format. They are placed next to the "
             "model file, so open them with a relative path (e.g. "
-            "`open(\"my_data.json\")`).",
+            '`open("my_data.json")`).',
         )
         chat_name = st.text_input(
             "Chat name (Optional)",
@@ -104,32 +99,30 @@ def _render_chat_message(message: ChatMessage) -> None:
         st.markdown(message["content"])
 
 
-def _describe_model(model: LoadedModel) -> str:
-    status = model["status"]
-    if status == "optimal" and model.get("objective") is not None:
-        sense = (model.get("sense") or "").lower()
-        return (
-            f"- **{model['name']}** loaded and solved to optimality "
-            f"({sense + ' ' if sense else ''}objective = {model['objective']:,.6g})"
-        )
-    return f"- **{model['name']}** loaded, but its status is *{status}*"
-
-
 def _render_chat_header(chat: ChatInfo) -> None:
     st.subheader(chat["name"])
 
 
-def _render_welcome(chat: ChatInfo) -> None:
-    models = chat.get("models") or []
-    lines = [_describe_model(m) for m in models] or ["- No model information."]
-    infeasible = any(m["status"].startswith("infeasible") for m in models)
-    hint = (
-        "The model is infeasible: ask why, or how to restore feasibility."
-        if infeasible
-        else "Ask about its values, sensitivity, what-if scenarios or robustness."
-    )
-    with st.chat_message("assistant"):
-        st.markdown("The model is ready.\n\n" + "\n".join(lines) + f"\n\n{hint}")
+def _send_pending_prompt(chat: ChatInfo, prompt: str) -> None:
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    assert state.selected_profile is not None, "No profile selected"
+
+    try:
+        with st.chat_message("assistant"):
+            with st.spinner("Analyzing your query, this may take a while..."):
+                state.current_chat = send_message(
+                    chat_id=chat["id"],
+                    message=prompt,
+                    profile_label=state.selected_profile.label,
+                    solver=state.selected_solver,
+                )
+    except BackendError as e:
+        state.send_error = f"Failed to send message: {e}"
+    finally:
+        state.pending_prompt = None
+    st.rerun()
 
 
 def render_active_chat() -> None:
@@ -138,14 +131,25 @@ def render_active_chat() -> None:
         return
 
     _render_chat_header(chat)
-    messages = chat.get("messages", [])
-    if not messages:
-        _render_welcome(chat)
-
-    for msg in messages:
+    for msg in chat.get("messages", []):
         _render_chat_message(msg)
 
-    if prompt := st.chat_input("Enter your query here..."):
+    if error := state.send_error:
+        st.error(error)
+        state.send_error = None
+
+    prompt = st.chat_input(
+        "Waiting for the response..."
+        if state.is_waiting_response
+        else "Enter your query here...",
+        disabled=state.is_waiting_response,
+    )
+
+    if state.pending_prompt is not None:
+        _send_pending_prompt(chat, state.pending_prompt)
+        return
+
+    if prompt:
         if not state.selected_profile:
             st.error("Please select an LLM profile in the sidebar first.")
             return
@@ -153,22 +157,7 @@ def render_active_chat() -> None:
             st.error("Please select a solver in the sidebar first.")
             return
 
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        try:
-            with st.spinner("Thinking..."):
-                new_chat = send_message(
-                    chat_id=chat["id"],
-                    message=prompt,
-                    profile_label=state.selected_profile.label,
-                    solver=state.selected_solver,
-                )
-        except BackendError as e:
-            st.error(f"Failed to send message: {e}")
-            return
-
-        state.current_chat = new_chat
+        state.pending_prompt = prompt
         st.rerun()
 
 

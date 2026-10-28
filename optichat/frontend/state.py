@@ -23,18 +23,10 @@ class ChatMessage(TypedDict):
     thought: NotRequired[str | None]
 
 
-class LoadedModel(TypedDict):
-    name: str
-    status: str
-    objective: NotRequired[float | None]
-    sense: NotRequired[str | None]
-
-
 class ChatInfo(TypedDict):
     id: str
     name: str
     messages: NotRequired[list[ChatMessage]]
-    models: NotRequired[list[LoadedModel]]
 
 
 class SessionStateManager:
@@ -45,6 +37,10 @@ class SessionStateManager:
             st.session_state["current_chat"] = None
         if "feedback" not in st.session_state:
             st.session_state["feedback"] = []
+        if "pending_prompt" not in st.session_state:
+            st.session_state["pending_prompt"] = None
+        if "send_error" not in st.session_state:
+            st.session_state["send_error"] = None
 
     @property
     def current_view(self) -> ViewType:
@@ -61,6 +57,26 @@ class SessionStateManager:
     @current_chat.setter
     def current_chat(self, value: ChatInfo | None) -> None:
         st.session_state["current_chat"] = value
+
+    @property
+    def pending_prompt(self) -> str | None:
+        return st.session_state.get("pending_prompt", None)
+
+    @pending_prompt.setter
+    def pending_prompt(self, value: str | None) -> None:
+        st.session_state["pending_prompt"] = value
+
+    @property
+    def is_waiting_response(self) -> bool:
+        return self.pending_prompt is not None
+
+    @property
+    def send_error(self) -> str | None:
+        return st.session_state.get("send_error", None)
+
+    @send_error.setter
+    def send_error(self, value: str | None) -> None:
+        st.session_state["send_error"] = value
 
     @property
     def selected_profile(self) -> ProfileConfig | None:
