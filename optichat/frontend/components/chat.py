@@ -152,13 +152,12 @@ def render_active_chat() -> None:
     if prompt:
         if not state.selected_profile:
             st.error("Please select an LLM profile in the sidebar first.")
-            return
         if not state.selected_solver:
             st.error("Please select a solver in the sidebar first.")
-            return
 
-        state.pending_prompt = prompt
-        st.rerun()
+        if state.selected_profile and state.selected_solver:
+            state.pending_prompt = prompt
+            st.rerun()
 
 
 def render_chat_view() -> None:
