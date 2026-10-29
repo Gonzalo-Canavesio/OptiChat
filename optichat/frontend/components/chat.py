@@ -2,11 +2,11 @@ import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from optichat.frontend.api.client import BackendError, create_chat, send_message
-from optichat.frontend.state import ChatInfo, ChatMessage, state
+from optichat.frontend.state import ChatInfo, ChatMessage, PendingChat, state
 from optichat.llm.models import ProfileConfig
 
 
-def _handle_create_chat_submission(
+def _queue_chat_creation(
     model_file: UploadedFile | None,
     data_files: list[UploadedFile] | None,
     model_paper: UploadedFile | None,
@@ -18,22 +18,31 @@ def _handle_create_chat_submission(
         st.error("Please upload a .py model file.")
         return False
 
-    try:
-        with st.spinner("Loading the model and describing it..."):
-            chat = create_chat(
-                model_file=model_file,
-                data_files=data_files,
-                model_paper=model_paper,
-                profile_label=profile.label,
-                solver=solver,
-                chat_name=chat_name.strip(),
-            )
-    except BackendError as e:
-        st.error(f"Failed to create chat: {e}")
-        return False
-
-    state.current_chat = chat
+    state.pending_chat = PendingChat(
+        model_file=model_file,
+        data_files=data_files,
+        model_paper=model_paper,
+        profile_label=profile.label,
+        solver=solver,
+        chat_name=chat_name.strip(),
+    )
     return True
+
+
+def _create_pending_chat(pending: PendingChat) -> None:
+    st.subheader(pending["chat_name"] or "New chat")
+
+    try:
+        with st.chat_message("assistant"):
+            with st.spinner(
+                "Loading the model and describing it, this may take a while..."
+            ):
+                state.current_chat = create_chat(**pending)
+    except BackendError as e:
+        state.send_error = f"Failed to create chat: {e}"
+    finally:
+        state.pending_chat = None
+    st.rerun()
 
 
 @st.dialog("Create New Chat", width="medium")
@@ -62,12 +71,13 @@ def render_create_chat_dialog() -> None:
         model_paper = st.file_uploader(
             "Model paper (Optional)",
             type=["pdf", "md", "txt"],
-            help="Upload a file describing your model. This can help the LLM understand your model better.",
+            help="Upload a file describing your model. "
+            "This can help the LLM understand your model better.",
         )
         submitted = st.form_submit_button("Create", type="primary", width="stretch")
 
     if submitted:
-        if _handle_create_chat_submission(
+        if _queue_chat_creation(
             model_file=model_file,
             data_files=data_files,
             model_paper=model_paper,
@@ -81,6 +91,9 @@ def render_create_chat_dialog() -> None:
 def _render_empty_chat_placeholder() -> None:
     st.markdown("# No active conversation")
     st.write(":gray[Start a new chat to begin analyzing an optimization model.]")
+    if error := state.send_error:
+        st.error(error)
+        state.send_error = None
     if st.button("New Chat", icon=":material/add:", type="primary"):
         if not state.selected_profile:
             st.error("Please select an LLM profile in the sidebar first.")
@@ -125,7 +138,7 @@ def _send_pending_prompt(chat: ChatInfo, prompt: str) -> None:
     st.rerun()
 
 
-def render_active_chat() -> None:
+def render_active_chat(prompt: str | None) -> None:
     chat = state.current_chat
     if not chat:
         return
@@ -137,13 +150,6 @@ def render_active_chat() -> None:
     if error := state.send_error:
         st.error(error)
         state.send_error = None
-
-    prompt = st.chat_input(
-        "Waiting for the response..."
-        if state.is_waiting_response
-        else "Enter your query here...",
-        disabled=state.is_waiting_response,
-    )
 
     if state.pending_prompt is not None:
         _send_pending_prompt(chat, state.pending_prompt)
@@ -160,8 +166,30 @@ def render_active_chat() -> None:
             st.rerun()
 
 
+def _render_chat_input() -> str | None:
+    # Called outside any container so it stays pinned to the bottom of the page.
+    return st.chat_input(
+        "Waiting for the response..."
+        if state.is_waiting_response
+        else "Enter your query here...",
+        disabled=state.is_waiting_response,
+    )
+
+
 def render_chat_view() -> None:
-    if state.current_chat is not None:
-        render_active_chat()
+    # Every view lives in a single container at the first slot. The browser reuses
+    # the children of a container replaced in place, so the previous view would
+    # stay on screen, faded, while the chat is being created. An element in that
+    # slot drops them instead, and the pending view goes into the next slot.
+    if state.pending_chat is not None:
+        _render_chat_input()
+        st.empty()
+        with st.container():
+            _create_pending_chat(state.pending_chat)
+    elif state.current_chat is not None:
+        prompt = _render_chat_input()
+        with st.container():
+            render_active_chat(prompt)
     else:
-        _render_empty_chat_placeholder()
+        with st.container():
+            _render_empty_chat_placeholder()

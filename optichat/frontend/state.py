@@ -1,6 +1,7 @@
 from typing import Any, Literal, NotRequired, TypedDict
 
 import streamlit as st
+from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from optichat.llm.models import ProfileConfig
 
@@ -29,6 +30,15 @@ class ChatInfo(TypedDict):
     messages: NotRequired[list[ChatMessage]]
 
 
+class PendingChat(TypedDict):
+    model_file: UploadedFile
+    data_files: list[UploadedFile] | None
+    model_paper: UploadedFile | None
+    profile_label: str
+    solver: str
+    chat_name: str
+
+
 class SessionStateManager:
     def initialize(self) -> None:
         if "current_view" not in st.session_state:
@@ -39,6 +49,8 @@ class SessionStateManager:
             st.session_state["feedback"] = []
         if "pending_prompt" not in st.session_state:
             st.session_state["pending_prompt"] = None
+        if "pending_chat" not in st.session_state:
+            st.session_state["pending_chat"] = None
         if "send_error" not in st.session_state:
             st.session_state["send_error"] = None
 
@@ -67,8 +79,16 @@ class SessionStateManager:
         st.session_state["pending_prompt"] = value
 
     @property
+    def pending_chat(self) -> PendingChat | None:
+        return st.session_state.get("pending_chat", None)
+
+    @pending_chat.setter
+    def pending_chat(self, value: PendingChat | None) -> None:
+        st.session_state["pending_chat"] = value
+
+    @property
     def is_waiting_response(self) -> bool:
-        return self.pending_prompt is not None
+        return self.pending_prompt is not None or self.pending_chat is not None
 
     @property
     def send_error(self) -> str | None:
