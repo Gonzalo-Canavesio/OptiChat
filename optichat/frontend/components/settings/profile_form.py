@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Any
 
 import streamlit as st
@@ -287,15 +288,23 @@ def _save_profile_and_notify(
     if existing_profile:
         update_llm_profile(existing_profile, new_profile)
         queue_feedback(
-            f"LLM profile **{new_profile.label}** (before **{existing_profile.label}**)"
-            " updated successfully!",
-            icon=":material/check_circle:",
+            partial(
+                st.success,
+                f"LLM profile **{new_profile.label}** "
+                f"(before **{existing_profile.label}**) updated successfully!",
+                icon=":material/check_circle:",
+            ),
+            "page",
         )
     else:
         add_llm_profile(new_profile)
         queue_feedback(
-            f"LLM profile **{new_profile.label}** added successfully!",
-            icon=":material/check_circle:",
+            partial(
+                st.success,
+                f"LLM profile **{new_profile.label}** added successfully!",
+                icon=":material/check_circle:",
+            ),
+            "page",
         )
 
 
@@ -380,7 +389,11 @@ def render_delete_confirmation_llm_profile(profile: ProfileConfig) -> None:
         if st.button("Delete", type="primary", width="stretch"):
             remove_llm_profile(profile)
             queue_feedback(
-                f"LLM profile **{profile.label}** deleted successfully!",
-                icon=":material/check_circle:",
+                partial(
+                    st.success,
+                    f"LLM profile **{profile.label}** deleted successfully!",
+                    icon=":material/check_circle:",
+                ),
+                "page",
             )
             st.rerun()

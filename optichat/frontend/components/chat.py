@@ -1,3 +1,5 @@
+from functools import partial
+
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
@@ -7,6 +9,8 @@ from optichat.frontend.state import (
     ChatMessage,
     PendingChat,
     main_view_container,
+    queue_feedback,
+    show_feedback,
     state,
 )
 from optichat.llm.models import ProfileConfig
@@ -45,7 +49,7 @@ def _create_pending_chat(pending: PendingChat) -> None:
             ):
                 state.current_chat = create_chat(**pending)
     except BackendError as e:
-        state.send_error = f"Failed to create chat: {e}"
+        queue_feedback(partial(st.error, f"Failed to create chat: {e}"), "chat")
     finally:
         state.pending_chat = None
     st.rerun()
@@ -97,9 +101,7 @@ def render_create_chat_dialog() -> None:
 def _render_empty_chat_placeholder() -> None:
     st.markdown("# No active conversation")
     st.write(":gray[Start a new chat to begin analyzing an optimization model.]")
-    if error := state.send_error:
-        st.error(error)
-        state.send_error = None
+    show_feedback("chat")
     if st.button("New Chat", icon=":material/add:", type="primary"):
         if not state.selected_profile:
             st.error("Please select an LLM profile in the sidebar first.")
@@ -138,7 +140,7 @@ def _send_pending_prompt(chat: ChatInfo, prompt: str) -> None:
                     solver=state.selected_solver,
                 )
     except BackendError as e:
-        state.send_error = f"Failed to send message: {e}"
+        queue_feedback(partial(st.error, f"Failed to send message: {e}"), "chat")
     finally:
         state.pending_prompt = None
     st.rerun()
@@ -153,9 +155,7 @@ def render_active_chat(prompt: str | None) -> None:
     for msg in chat.get("messages", []):
         _render_chat_message(msg)
 
-    if error := state.send_error:
-        st.error(error)
-        state.send_error = None
+    show_feedback("chat")
 
     if state.pending_prompt is not None:
         _send_pending_prompt(chat, state.pending_prompt)

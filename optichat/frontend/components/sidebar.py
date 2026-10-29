@@ -1,8 +1,15 @@
+from functools import partial
+
 import streamlit as st
 
 from optichat.frontend.api.client import BackendError, fetch_chat, fetch_chats
 from optichat.frontend.components.chat import render_create_chat_dialog
-from optichat.frontend.state import AVAILABLE_SOLVERS, state
+from optichat.frontend.state import (
+    AVAILABLE_SOLVERS,
+    queue_feedback,
+    show_feedback,
+    state,
+)
 from optichat.llm.profiles import get_llm_profiles
 
 
@@ -10,7 +17,7 @@ def _open_chat(chat_id: str) -> None:
     try:
         state.current_chat = fetch_chat(chat_id)
     except BackendError as e:
-        state.open_chat_error = f"Couldn't open this chat: {e}"
+        queue_feedback(partial(st.error, f"Couldn't open this chat: {e}"), "sidebar")
 
 
 def render_sidebar() -> None:
@@ -64,9 +71,7 @@ def render_sidebar() -> None:
         st.error(f"Couldn't load your chats: {e}")
         chats = []
 
-    if error := state.open_chat_error:
-        st.error(error)
-        state.open_chat_error = None
+    show_feedback("sidebar")
 
     for chat in chats:
         st.button(

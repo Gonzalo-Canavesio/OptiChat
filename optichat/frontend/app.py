@@ -10,7 +10,7 @@ from optichat.frontend.components.sidebar import render_sidebar
 from optichat.frontend.state import (
     configure_page,
     main_view_container,
-    run_toasts,
+    show_feedback,
     state,
 )
 from optichat.llm.credentials import get_llm_credentials
@@ -19,7 +19,7 @@ from optichat.llm.profiles import get_llm_profiles
 
 def run_interface() -> None:
     configure_page()
-    run_toasts()
+    show_feedback("page")
 
     if state.current_view == "settings":
         with main_view_container("settings"):

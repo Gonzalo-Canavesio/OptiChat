@@ -1,3 +1,5 @@
+from functools import partial
+
 import streamlit as st
 
 from optichat.frontend.state import queue_feedback
@@ -87,9 +89,13 @@ def _handle_form_submission_llm_credential(
         credential = existing_credential.model_copy(update={"label": label})
         update_llm_credential(existing_credential, credential)
         queue_feedback(
-            f"Connection **{credential.label}** "
-            f"(before **{existing_credential.label}**) updated successfully!",
-            icon=":material/check_circle:",
+            partial(
+                st.success,
+                f"Connection **{credential.label}** "
+                f"(before **{existing_credential.label}**) updated successfully!",
+                icon=":material/check_circle:",
+            ),
+            "page",
         )
         return True
 
@@ -110,8 +116,12 @@ def _handle_form_submission_llm_credential(
         st.error(f"The connection was not saved. {e}")
         return False
     queue_feedback(
-        f"Connection **{credential.label}** added successfully!",
-        icon=":material/check_circle:",
+        partial(
+            st.success,
+            f"Connection **{credential.label}** added successfully!",
+            icon=":material/check_circle:",
+        ),
+        "page",
     )
     return True
 
@@ -166,7 +176,11 @@ def render_delete_confirmation_llm_credential(
         if st.button("Delete", type="primary", width="stretch"):
             remove_llm_credential(credential)
             queue_feedback(
-                f"Connection **{credential.label}** deleted successfully!",
-                icon=":material/check_circle:",
+                partial(
+                    st.success,
+                    f"Connection **{credential.label}** deleted successfully!",
+                    icon=":material/check_circle:",
+                ),
+                "page",
             )
             st.rerun()

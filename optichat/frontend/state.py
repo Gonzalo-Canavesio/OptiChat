@@ -1,4 +1,5 @@
-from typing import Any, Literal, NotRequired, TypedDict
+from collections.abc import Callable
+from typing import Literal, NotRequired, TypedDict, get_args
 
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
@@ -9,14 +10,10 @@ from optichat.llm.models import ProfileConfig
 ViewType = Literal["chat", "settings"]
 
 PyomoSolver = Literal["GLPK", "CBC", "HiGHS", "Gurobi", "CPLEX", "SCIP"]
-AVAILABLE_SOLVERS: list[PyomoSolver] = [
-    "GLPK",
-    "CBC",
-    "HiGHS",
-    "Gurobi",
-    "CPLEX",
-    "SCIP",
-]
+AVAILABLE_SOLVERS = get_args(PyomoSolver)
+
+Feedback = Callable[[], object]
+FeedbackSlot = Literal["page", "sidebar", "chat"]
 
 
 class ChatMessage(TypedDict):
@@ -47,15 +44,11 @@ class SessionStateManager:
         if "current_chat" not in st.session_state:
             st.session_state["current_chat"] = None
         if "feedback" not in st.session_state:
-            st.session_state["feedback"] = []
+            st.session_state["feedback"] = {slot: [] for slot in get_args(FeedbackSlot)}
         if "pending_prompt" not in st.session_state:
             st.session_state["pending_prompt"] = None
         if "pending_chat" not in st.session_state:
             st.session_state["pending_chat"] = None
-        if "send_error" not in st.session_state:
-            st.session_state["send_error"] = None
-        if "open_chat_error" not in st.session_state:
-            st.session_state["open_chat_error"] = None
         if "main_view_id" not in st.session_state:
             st.session_state["main_view_id"] = None
         if "main_view_slot" not in st.session_state:
@@ -63,7 +56,7 @@ class SessionStateManager:
 
     @property
     def current_view(self) -> ViewType:
-        return st.session_state.get("current_view", "chat")
+        return st.session_state["current_view"]
 
     @current_view.setter
     def current_view(self, value: ViewType) -> None:
@@ -71,7 +64,7 @@ class SessionStateManager:
 
     @property
     def current_chat(self) -> ChatInfo | None:
-        return st.session_state.get("current_chat", None)
+        return st.session_state["current_chat"]
 
     @current_chat.setter
     def current_chat(self, value: ChatInfo | None) -> None:
@@ -79,7 +72,7 @@ class SessionStateManager:
 
     @property
     def pending_prompt(self) -> str | None:
-        return st.session_state.get("pending_prompt", None)
+        return st.session_state["pending_prompt"]
 
     @pending_prompt.setter
     def pending_prompt(self, value: str | None) -> None:
@@ -87,7 +80,7 @@ class SessionStateManager:
 
     @property
     def pending_chat(self) -> PendingChat | None:
-        return st.session_state.get("pending_chat", None)
+        return st.session_state["pending_chat"]
 
     @pending_chat.setter
     def pending_chat(self, value: PendingChat | None) -> None:
@@ -98,24 +91,8 @@ class SessionStateManager:
         return self.pending_prompt is not None or self.pending_chat is not None
 
     @property
-    def send_error(self) -> str | None:
-        return st.session_state.get("send_error", None)
-
-    @send_error.setter
-    def send_error(self, value: str | None) -> None:
-        st.session_state["send_error"] = value
-
-    @property
-    def open_chat_error(self) -> str | None:
-        return st.session_state.get("open_chat_error", None)
-
-    @open_chat_error.setter
-    def open_chat_error(self, value: str | None) -> None:
-        st.session_state["open_chat_error"] = value
-
-    @property
     def main_view_id(self) -> str | None:
-        return st.session_state.get("main_view_id", None)
+        return st.session_state["main_view_id"]
 
     @main_view_id.setter
     def main_view_id(self, value: str | None) -> None:
@@ -123,7 +100,7 @@ class SessionStateManager:
 
     @property
     def main_view_slot(self) -> int:
-        return st.session_state.get("main_view_slot", 0)
+        return st.session_state["main_view_slot"]
 
     @main_view_slot.setter
     def main_view_slot(self, value: int) -> None:
@@ -131,18 +108,18 @@ class SessionStateManager:
 
     @property
     def selected_profile(self) -> ProfileConfig | None:
-        return st.session_state.get("profile_selectbox", None)
+        return st.session_state.get("profile_selectbox")
 
     @selected_profile.setter
     def selected_profile(self, value: ProfileConfig | None) -> None:
         st.session_state["profile_selectbox"] = value
 
     @property
-    def selected_solver(self) -> PyomoSolver:
-        return st.session_state.get("solver_selectbox", "glpk")
+    def selected_solver(self) -> PyomoSolver | None:
+        return st.session_state.get("solver_selectbox")
 
     @selected_solver.setter
-    def selected_solver(self, value: PyomoSolver) -> None:
+    def selected_solver(self, value: PyomoSolver | None) -> None:
         st.session_state["solver_selectbox"] = value
 
 
@@ -158,18 +135,14 @@ def configure_page() -> None:
     state.initialize()
 
 
-def queue_feedback(*args: Any, **kwargs: Any) -> None:
-    if "feedback" not in st.session_state:
-        st.session_state["feedback"] = []
-    st.session_state["feedback"].append((args, kwargs))
+def queue_feedback(feedback: Feedback, slot: FeedbackSlot) -> None:
+    st.session_state["feedback"][slot].append(feedback)
 
 
-def run_toasts() -> None:
-    feedback_queue: list[tuple[tuple[Any, ...], dict[str, Any]]] = st.session_state.get(
-        "feedback", []
-    )
-    for args, kwargs in feedback_queue:
-        st.success(*args, **kwargs)
+def show_feedback(slot: FeedbackSlot) -> None:
+    feedback_queue = st.session_state["feedback"][slot]
+    for feedback in feedback_queue:
+        feedback()
     feedback_queue.clear()
 
 
