@@ -6,6 +6,13 @@ from optichat.frontend.state import AVAILABLE_SOLVERS, state
 from optichat.llm.profiles import get_llm_profiles
 
 
+def _open_chat(chat_id: str) -> None:
+    try:
+        state.current_chat = fetch_chat(chat_id)
+    except BackendError as e:
+        state.open_chat_error = f"Couldn't open this chat: {e}"
+
+
 def render_sidebar() -> None:
     locked = state.is_waiting_response
 
@@ -19,9 +26,12 @@ def render_sidebar() -> None:
         disabled=locked,
     )
 
-    if st.button("Manage Connections & Profiles", width="stretch", disabled=locked):
-        state.current_view = "settings"
-        st.rerun()
+    st.button(
+        "Manage Connections & Profiles",
+        width="stretch",
+        disabled=locked,
+        on_click=lambda: setattr(state, "current_view", "settings"),
+    )
 
     st.selectbox(
         "Select Solver",
@@ -54,8 +64,12 @@ def render_sidebar() -> None:
         st.error(f"Couldn't load your chats: {e}")
         chats = []
 
+    if error := state.open_chat_error:
+        st.error(error)
+        state.open_chat_error = None
+
     for chat in chats:
-        if st.button(
+        st.button(
             chat["name"],
             width="stretch",
             key=f"chat_btn_{chat['id']}",
@@ -63,10 +77,6 @@ def render_sidebar() -> None:
             if state.current_chat and chat["id"] == state.current_chat["id"]
             else "tertiary",
             disabled=locked,
-        ):
-            try:
-                state.current_chat = fetch_chat(chat["id"])
-            except BackendError as e:
-                st.error(f"Couldn't open this chat: {e}")
-            else:
-                st.rerun()
+            on_click=_open_chat,
+            args=(chat["id"],),
+        )

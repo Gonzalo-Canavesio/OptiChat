@@ -120,11 +120,13 @@ def _render_profiles_section() -> None:
 
 
 def render_settings_view() -> None:
-    if st.button(
-        "", type="tertiary", icon=":material/arrow_back:", help="Back to Chat"
-    ):
-        state.current_view = "chat"
-        st.rerun()
+    st.button(
+        "",
+        type="tertiary",
+        icon=":material/arrow_back:",
+        help="Back to Chat",
+        on_click=lambda: setattr(state, "current_view", "chat"),
+    )
 
     st.title("Manage Connections & Profiles")
     mode = st.segmented_control(

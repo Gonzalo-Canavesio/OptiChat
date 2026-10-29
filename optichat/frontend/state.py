@@ -1,6 +1,7 @@
 from typing import Any, Literal, NotRequired, TypedDict
 
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from optichat.llm.models import ProfileConfig
@@ -53,6 +54,12 @@ class SessionStateManager:
             st.session_state["pending_chat"] = None
         if "send_error" not in st.session_state:
             st.session_state["send_error"] = None
+        if "open_chat_error" not in st.session_state:
+            st.session_state["open_chat_error"] = None
+        if "main_view_id" not in st.session_state:
+            st.session_state["main_view_id"] = None
+        if "main_view_slot" not in st.session_state:
+            st.session_state["main_view_slot"] = 0
 
     @property
     def current_view(self) -> ViewType:
@@ -99,6 +106,30 @@ class SessionStateManager:
         st.session_state["send_error"] = value
 
     @property
+    def open_chat_error(self) -> str | None:
+        return st.session_state.get("open_chat_error", None)
+
+    @open_chat_error.setter
+    def open_chat_error(self, value: str | None) -> None:
+        st.session_state["open_chat_error"] = value
+
+    @property
+    def main_view_id(self) -> str | None:
+        return st.session_state.get("main_view_id", None)
+
+    @main_view_id.setter
+    def main_view_id(self, value: str | None) -> None:
+        st.session_state["main_view_id"] = value
+
+    @property
+    def main_view_slot(self) -> int:
+        return st.session_state.get("main_view_slot", 0)
+
+    @main_view_slot.setter
+    def main_view_slot(self, value: int) -> None:
+        st.session_state["main_view_slot"] = value
+
+    @property
     def selected_profile(self) -> ProfileConfig | None:
         return st.session_state.get("profile_selectbox", None)
 
@@ -140,6 +171,22 @@ def run_toasts() -> None:
     for args, kwargs in feedback_queue:
         st.success(*args, **kwargs)
     feedback_queue.clear()
+
+
+def main_view_container(view_id: str) -> DeltaGenerator:
+    # A container that replaces another keeps the old children, and the ones the new
+    # view does not overwrite are only removed when the run ends, so a shorter view
+    # (e.g. a chat with fewer messages) would briefly show the end of the previous
+    # one under it. A new view takes the other of two slots, and the slot it leaves
+    # gets an empty element, which drops the previous view at once.
+    if state.main_view_id != view_id:
+        state.main_view_id = view_id
+        state.main_view_slot = 1 - state.main_view_slot
+    slots = [
+        st.container() if slot == state.main_view_slot else st.empty()
+        for slot in range(2)
+    ]
+    return slots[state.main_view_slot]
 
 
 def clean_session_state_for_profile_form() -> None:

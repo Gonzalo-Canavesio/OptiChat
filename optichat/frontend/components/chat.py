@@ -2,7 +2,13 @@ import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from optichat.frontend.api.client import BackendError, create_chat, send_message
-from optichat.frontend.state import ChatInfo, ChatMessage, PendingChat, state
+from optichat.frontend.state import (
+    ChatInfo,
+    ChatMessage,
+    PendingChat,
+    main_view_container,
+    state,
+)
 from optichat.llm.models import ProfileConfig
 
 
@@ -177,19 +183,14 @@ def _render_chat_input() -> str | None:
 
 
 def render_chat_view() -> None:
-    # Every view lives in a single container at the first slot. The browser reuses
-    # the children of a container replaced in place, so the previous view would
-    # stay on screen, faded, while the chat is being created. An element in that
-    # slot drops them instead, and the pending view goes into the next slot.
     if state.pending_chat is not None:
         _render_chat_input()
-        st.empty()
-        with st.container():
+        with main_view_container("pending_chat"):
             _create_pending_chat(state.pending_chat)
     elif state.current_chat is not None:
         prompt = _render_chat_input()
-        with st.container():
+        with main_view_container(f"chat_{state.current_chat['id']}"):
             render_active_chat(prompt)
     else:
-        with st.container():
+        with main_view_container("no_chat"):
             _render_empty_chat_placeholder()

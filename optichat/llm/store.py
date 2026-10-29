@@ -2,8 +2,9 @@ from pathlib import Path
 
 import yaml
 
-CREDENTIALS_FILE = Path(".llm_credentials.yaml")
-PROFILES_FILE = Path(".llm_profiles.yaml")
+ROOT = Path(__file__).resolve().parent.parent.parent
+CREDENTIALS_FILE = ROOT / ".llm_credentials.yaml"
+PROFILES_FILE = ROOT / ".llm_profiles.yaml"
 
 
 def generate_valid_label(base_label: str, existing_labels: set[str]) -> str:

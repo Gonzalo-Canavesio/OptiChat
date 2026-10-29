@@ -7,7 +7,12 @@ from optichat.frontend.components.settings.credential_form import (
 from optichat.frontend.components.settings.profile_form import render_llm_profile_form
 from optichat.frontend.components.settings.settings_view import render_settings_view
 from optichat.frontend.components.sidebar import render_sidebar
-from optichat.frontend.state import configure_page, run_toasts, state
+from optichat.frontend.state import (
+    configure_page,
+    main_view_container,
+    run_toasts,
+    state,
+)
 from optichat.llm.credentials import get_llm_credentials
 from optichat.llm.profiles import get_llm_profiles
 
@@ -17,7 +22,8 @@ def run_interface() -> None:
     run_toasts()
 
     if state.current_view == "settings":
-        render_settings_view()
+        with main_view_container("settings"):
+            render_settings_view()
     else:
         with st.sidebar:
             render_sidebar()
