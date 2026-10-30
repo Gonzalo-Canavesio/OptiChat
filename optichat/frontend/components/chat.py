@@ -3,7 +3,7 @@ from functools import partial
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-from optichat.frontend.api.client import BackendError, create_chat, send_message
+from optichat.frontend.api import BackendError, create_chat, send_message
 from optichat.frontend.state import (
     ChatInfo,
     ChatMessage,
@@ -129,6 +129,7 @@ def _send_pending_prompt(chat: ChatInfo, prompt: str) -> None:
         st.markdown(prompt)
 
     assert state.selected_profile is not None, "No profile selected"
+    assert state.selected_solver is not None, "No solver selected"
 
     try:
         with st.chat_message("assistant"):

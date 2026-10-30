@@ -1,3 +1,5 @@
+from typing import Any
+
 import httpx
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
@@ -22,7 +24,7 @@ def _raise_for_error(response: httpx.Response) -> None:
     raise BackendError(detail if isinstance(detail, str) else response.text[:300])
 
 
-def _request(method: str, path: str, **kwargs) -> dict | list:
+def _request(method: str, path: str, **kwargs) -> Any:
     try:
         response = _client.request(method, path, **kwargs)
     except httpx.HTTPError as e:
@@ -82,6 +84,4 @@ def send_message(
         "solver": solver,
     }
 
-    return _request(
-        "POST", f"/chats/{chat_id}/messages", json=payload, timeout=1800
-    )
+    return _request("POST", f"/chats/{chat_id}/messages", json=payload, timeout=1800)

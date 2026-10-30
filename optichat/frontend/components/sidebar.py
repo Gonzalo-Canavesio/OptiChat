@@ -2,7 +2,7 @@ from functools import partial
 
 import streamlit as st
 
-from optichat.frontend.api.client import BackendError, fetch_chat, fetch_chats
+from optichat.frontend.api import BackendError, fetch_chat, fetch_chats
 from optichat.frontend.components.chat import render_create_chat_dialog
 from optichat.frontend.state import (
     AVAILABLE_SOLVERS,
