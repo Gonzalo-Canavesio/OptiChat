@@ -160,29 +160,3 @@ def main_view_container(view_id: str) -> DeltaGenerator:
         for slot in range(2)
     ]
     return slots[state.main_view_slot]
-
-
-def clean_session_state_for_profile_form() -> None:
-    keys_to_remove = [
-        "simple_credential_selectbox",
-        "simple_model_selectbox",
-        "root_agent_credential_selectbox",
-        "root_agent_model_selectbox",
-        "root_agent_temperature_input",
-        "root_agent_max_tokens_input",
-        "expert_agent_credential_selectbox",
-        "expert_agent_model_selectbox",
-        "expert_agent_temperature_input",
-        "expert_agent_max_tokens_input",
-        "illustrator_agent_credential_selectbox",
-        "illustrator_agent_model_selectbox",
-        "illustrator_agent_temperature_input",
-        "illustrator_agent_max_tokens_input",
-        "generator_agent_credential_selectbox",
-        "generator_agent_model_selectbox",
-        "generator_agent_temperature_input",
-        "generator_agent_max_tokens_input",
-        "profile_mode",
-    ]
-    for key in keys_to_remove:
-        st.session_state.pop(key, None)

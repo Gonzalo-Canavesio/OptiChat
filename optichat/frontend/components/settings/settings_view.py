@@ -8,7 +8,7 @@ from optichat.frontend.components.settings.profile_form import (
     render_delete_confirmation_llm_profile,
     render_llm_profile_form,
 )
-from optichat.frontend.state import clean_session_state_for_profile_form, state
+from optichat.frontend.state import state
 from optichat.llm.credentials import get_llm_credentials
 from optichat.llm.models import LLMCredential, ProfileConfig
 from optichat.llm.profiles import get_llm_profiles
@@ -86,7 +86,7 @@ def _render_profile_item(profile: ProfileConfig) -> None:
                 st.dialog(
                     title=f"Edit LLM Profile: {profile.label}",
                     width="large",
-                    on_dismiss=clean_session_state_for_profile_form,
+                    on_dismiss="rerun",
                 )(render_llm_profile_form)(profile)
 
         with col_delete:
@@ -112,7 +112,7 @@ def _render_profiles_section() -> None:
         st.dialog(
             title="Add New LLM Profile",
             width="large",
-            on_dismiss=clean_session_state_for_profile_form,
+            on_dismiss="rerun",
         )(render_llm_profile_form)()
 
     for profile in get_llm_profiles():

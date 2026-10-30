@@ -3,7 +3,7 @@ from typing import Any
 
 import streamlit as st
 
-from optichat.frontend.state import clean_session_state_for_profile_form, queue_feedback
+from optichat.frontend.state import queue_feedback
 from optichat.llm.catalog import fetch_agent_models
 from optichat.llm.credentials import get_llm_credentials
 from optichat.llm.models import AgentConfig, LLMCredential, ProfileConfig
@@ -369,7 +369,6 @@ def render_llm_profile_form(
                 existing_profile,
                 profile_label,
             ):
-                clean_session_state_for_profile_form()
                 st.rerun()
 
 
